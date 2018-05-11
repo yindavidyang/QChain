@@ -33,8 +33,8 @@ func leader(laChan chan *messageData, lbChan chan *messageData, finished chan bo
 	pairing := params.NewPairing()
 	g := pairing.NewG2().Rand()
 
-	laChan <- &messageData{strData: params.String(), byteData: g.Bytes()}
-	lbChan <- &messageData{strData: params.String(), byteData: g.Bytes()}
+	laChan <- &messageData{params.String(), g.Bytes()}
+	lbChan <- &messageData{params.String(), g.Bytes()}
 
 	// Step 2: leader collects public keys, and computes aggregate key
 	aliceKey := pairing.NewG2().SetBytes((<-laChan).byteData)
@@ -45,11 +45,13 @@ func leader(laChan chan *messageData, lbChan chan *messageData, finished chan bo
 	fmt.Println("Length of Bob's public key:", len(bobKey.Bytes()))
 	fmt.Println("Length of aggregate public key:", len(aggKey.Bytes()))
 
+	// Case 1: both Alice and Bob sign the same hash
+
 	// Step 3: leader broadcasts hash to sign
 	message := "some text to sign by both Alice and Bob"
 	h := pairing.NewG1().SetFromStringHash(message, sha256.New())
-	laChan <- &messageData{strData: "", byteData: h.Bytes()}
-	lbChan <- &messageData{strData: "", byteData: h.Bytes()}
+	laChan <- &messageData{"", h.Bytes()}
+	lbChan <- &messageData{"", h.Bytes()}
 
 	// Step 4: leader collects individual signatures, and computes aggregate signature
 	aliceSig := pairing.NewG1().SetBytes((<-laChan).byteData)
@@ -85,15 +87,15 @@ func leader(laChan chan *messageData, lbChan chan *messageData, finished chan bo
 		fmt.Println("Aggregate signature verified correctly.")
 	}
 
-	// Another case: Alice and Bob sign different hashes. Aggregate signature verification should fail.
+	// Case 2: Alice and Bob sign different hashes.
 
 	// Step 3: leader broadcasts hash to sign
 	aliceMsg := "some text to sign by Alice"
 	bobMsg := "some text to sign by Bob"
 	aliceHash := pairing.NewG1().SetFromStringHash(aliceMsg, sha256.New())
 	bobHash := pairing.NewG1().SetFromStringHash(bobMsg, sha256.New())
-	laChan <- &messageData{strData: "", byteData: aliceHash.Bytes()}
-	lbChan <- &messageData{strData: "", byteData: bobHash.Bytes()}
+	laChan <- &messageData{"", aliceHash.Bytes()}
+	lbChan <- &messageData{"", bobHash.Bytes()}
 
 	// Step 4: leader collects individual signatures, and computes aggregate signature
 	aliceSig = pairing.NewG1().SetBytes((<-laChan).byteData)
@@ -117,20 +119,30 @@ func leader(laChan chan *messageData, lbChan chan *messageData, finished chan bo
 		fmt.Println("Bob's signature verified correctly.")
 	}
 
-	temp5 = pairing.NewGT().Pair(aliceHash, aggKey)
 	temp6 = pairing.NewGT().Pair(aggSig, g)
+
+	// using only alice's hash obviously fails, since bob signs a different hash
+	temp5 = pairing.NewGT().Pair(aliceHash, aggKey)
 	if !temp5.Equals(temp6) {
 		fmt.Println("Aggregate signature check failed (as expected).")
 	} else {
 		fmt.Println("*BUG* Aggregate signature verified correctly.*BUG*")
 	}
 
+	// using Bob's hash similarly fails
 	temp5 = pairing.NewGT().Pair(bobHash, aggKey)
-	temp6 = pairing.NewGT().Pair(aggSig, g)
 	if !temp5.Equals(temp6) {
 		fmt.Println("Aggregate signature check failed (as expected).")
 	} else {
 		fmt.Println("*BUG* Aggregate signature verified correctly.*BUG*")
+	}
+
+	// correct way
+	temp5 = pairing.NewGT().Mul(temp1, temp2)
+	if !temp1.Equals(temp2) {
+		fmt.Println("*BUG* Aggregate signature check failed. *BUG*")
+	} else {
+		fmt.Println("Aggregate signature verified correctly.")
 	}
 
 	finished <- true
@@ -145,14 +157,19 @@ func alice(laChan chan *messageData, finished chan bool) {
 	alicePubKey := pairing.NewG2().PowZn(g, alicePrivKey)
 
 	// Don't reuse messages; otherwise we get race conditions.
-	laChan <- &messageData{strData: "", byteData: alicePubKey.Bytes()}
+	laChan <- &messageData{"", alicePubKey.Bytes()}
+
+	// Case 1: both Alice and Bob sign the same hash
+
 	hash := pairing.NewG1().SetBytes((<-laChan).byteData)
 	aliceSig := pairing.NewG2().PowZn(hash, alicePrivKey)
-	laChan <- &messageData{strData: "", byteData: aliceSig.Bytes()}
+	laChan <- &messageData{"", aliceSig.Bytes()}
+
+	// Case 2: Alice and Bob sign different hashes.
 
 	hash = pairing.NewG1().SetBytes((<-laChan).byteData)
 	aliceSig = pairing.NewG2().PowZn(hash, alicePrivKey)
-	laChan <- &messageData{strData: "", byteData: aliceSig.Bytes()}
+	laChan <- &messageData{"", aliceSig.Bytes()}
 
 	finished <- true
 }
@@ -166,14 +183,19 @@ func bob(lbChan chan *messageData, finished chan bool) {
 	bobPubKey := pairing.NewG2().PowZn(g, bobPrivKey)
 
 	// Don't reuse messages; otherwise we get race conditions.
-	lbChan <- &messageData{strData: "", byteData: bobPubKey.Bytes()}
+	lbChan <- &messageData{"", bobPubKey.Bytes()}
+
+	// Case 1: both Alice and Bob sign the same hash
+
 	hash := pairing.NewG1().SetBytes((<-lbChan).byteData)
 	bobSig := pairing.NewG2().PowZn(hash, bobPrivKey)
-	lbChan <- &messageData{strData: "", byteData: bobSig.Bytes()}
+	lbChan <- &messageData{"", bobSig.Bytes()}
+
+	// Case 2: Alice and Bob sign different hashes.
 
 	hash = pairing.NewG1().SetBytes((<-lbChan).byteData)
 	bobSig = pairing.NewG2().PowZn(hash, bobPrivKey)
-	lbChan <- &messageData{strData: "", byteData: bobSig.Bytes()}
+	lbChan <- &messageData{"", bobSig.Bytes()}
 
 	finished <- true
 }
