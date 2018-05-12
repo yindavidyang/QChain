@@ -14,6 +14,8 @@ func (self *Peer) Send() {
 		}
 
 		atomic.AddInt64(&numSend, 1)
+
+		// note that this is not correct since it causes race conditions
 		chans[rcpt] <- self.state
 	}
 }
@@ -31,6 +33,8 @@ func (self *Peer) Listen() {
 
 func (self *Peer) updateState(msg *message) {
 	var i int
+	// note that this is not correct since it causes race conditions
+
 	for i = 0; i < numPeers; i++ {
 		if self.state.counters[i] == 0 && msg.counters[i] != 0 {
 			break
