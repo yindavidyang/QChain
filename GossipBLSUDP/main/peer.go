@@ -6,6 +6,9 @@ import (
 	"math/rand"
 	"github.com/NIk-U/pbc"
 	"crypto/sha256"
+	"log"
+	"net"
+	"strconv"
 )
 
 func (self *Peer) Send() {
@@ -19,18 +22,36 @@ func (self *Peer) Send() {
 		self.stateMutex.Lock()
 		msg := self.state.copy()
 		self.stateMutex.Unlock()
-		chans[rcpt] <- msg
+
+
+		conn, err := net.Dial("udp", address + ":" + strconv.Itoa(startPort + rcpt))
+		if err != nil {
+			log.Panic("Error connecting to server: ", err)
+		}
+		conn.Write(msg.toBytes())
+		conn.Close()
 	}
 }
 
 func (self *Peer) Listen() {
+	pc, err := net.ListenPacket("udp", address + ":" + strconv.Itoa(startPort + self.id))
+	if err != nil {
+		log.Panic("Error listening to address: ", err)
+	}
+	defer pc.Close()
+
 	for {
-		select {
-		case msg := <-chans[self.id]:
-			atomic.AddInt64(&numRecv, 1)
-			self.updateState(msg)
-		default:
+		buffer := make([]byte, 1024)
+		n, _, err := pc.ReadFrom(buffer)
+		if err != nil {
+			log.Panic("Error reading from client", err)
 		}
+		atomic.AddInt64(&numRecv, 1)
+		msg := &message{}
+		msg.counters = make([]int, numPeers)
+		msg.aggSig = self.pairing.NewG1()
+		msg.fromBytes(buffer[:n])
+		self.updateState(msg)
 	}
 }
 
@@ -46,12 +67,13 @@ func (self *Peer) updateState(msg *message) {
 		return
 	}
 
-	// Todo: check aggregate signature in msg
+	if ok := msg.verifyMessage(self.pairing, self.g); !ok {
+		log.Panic("Invalid Message: ", msg)
+	}
 
 	self.stateMutex.Lock()
 	defer self.stateMutex.Unlock()
 
-	self.state.sum += msg.sum
 	self.state.aggSig.ThenMul(msg.aggSig)
 	for i = 0; i < numPeers; i++ {
 		self.state.counters[i] += msg.counters[i]
@@ -72,7 +94,6 @@ func (self *Peer) Gossip() {
 func (self *Peer) Init(id int, pairing *pbc.Pairing, g *pbc.Element) {
 	self.id = id
 	self.num = rand.Int() % 10000
-	self.state.sum = self.num
 	self.state.counters = make([]int, numPeers)
 	self.state.counters[id] = 1
 
@@ -100,4 +121,12 @@ func (self *Peer) Verify(data []byte, sig *pbc.Element) bool {
 	temp2 := self.pairing.NewGT().Pair(sig, self.g)
 
 	return temp1.Equals(temp2)
+}
+
+func (self *Peer) VerifyPubKeySig() bool {
+	return self.Verify(self.PubKey.Bytes(), self.PubKeySig)
+}
+
+func (self *Peer) VerifyState() bool {
+	return self.state.verifyMessage(self.pairing, self.g)
 }
