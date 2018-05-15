@@ -3,32 +3,27 @@ package main
 import (
 	"log"
 	"github.com/NIk-U/pbc"
-	"sync"
+	"time"
 )
 
 const (
 	address   = "127.0.0.1"
 	startPort = 2000
 
-	numPeers   = 10
-	numRounds  = 4
-	bf         = 2
-	textToSign = "Gossip BLS test message"
+	numPeers  = 10
+	numRounds = 4
+	bf        = 2
+	// increase epoch size if the program crashes or verification fails
+	epoch      = time.Millisecond * 100
+	dataToSign = "Gossip BLS UDP BFT test data"
 )
 
-type (
-	message struct {
-		counters []int
-		aggSig   *pbc.Element
-	}
-
-	Peer struct {
-		num, id                            int
-		state                              message
-		PubKey, privKey, sig, PubKeySig, g *pbc.Element
-		pairing                            *pbc.Pairing
-		stateMutex                         sync.Mutex
-	}
+const (
+	StateIdle        = iota
+	StatePreprepared
+	StatePrepared
+	StateCommitted
+	StateFinal
 )
 
 var (

@@ -9,9 +9,22 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
+)
+
+type (
+	Peer struct {
+		id, state                          int
+		aggSig                             AggSig
+		PubKey, privKey, sig, PubKeySig, g *pbc.Element
+		pairing                            *pbc.Pairing
+		stateMutex                         sync.Mutex
+	}
 )
 
 func (self *Peer) Send() {
+	// Randomly choose bf peers to gossip
+
 	for i := 0; i < bf; i++ {
 		rcpt := rand.Int() % (numPeers - 1)
 		if rcpt >= self.id {
@@ -20,15 +33,14 @@ func (self *Peer) Send() {
 
 		atomic.AddInt64(&numSend, 1)
 		self.stateMutex.Lock()
-		msg := self.state.copy()
+		msg := self.aggSig.Copy()
 		self.stateMutex.Unlock()
-
 
 		conn, err := net.Dial("udp", address + ":" + strconv.Itoa(startPort + rcpt))
 		if err != nil {
 			log.Panic("Error connecting to server: ", err)
 		}
-		conn.Write(msg.toBytes())
+		conn.Write(msg.Bytes())
 		conn.Close()
 	}
 }
@@ -47,19 +59,18 @@ func (self *Peer) Listen() {
 			log.Panic("Error reading from client", err)
 		}
 		atomic.AddInt64(&numRecv, 1)
-		msg := &message{}
-		msg.counters = make([]int, numPeers)
-		msg.aggSig = self.pairing.NewG1()
-		msg.fromBytes(buffer[:n])
+		msg := &AggSig{}
+		msg.Init(self.pairing)
+		msg.SetBytes(buffer[:n])
 		self.updateState(msg)
 	}
 }
 
-func (self *Peer) updateState(msg *message) {
+func (self *Peer) updateState(msg *AggSig) {
 	var i int
 
 	for i = 0; i < numPeers; i++ {
-		if self.state.counters[i] == 0 && msg.counters[i] != 0 {
+		if self.aggSig.counters[i] == 0 && msg.counters[i] != 0 {
 			break
 		}
 	}
@@ -67,17 +78,15 @@ func (self *Peer) updateState(msg *message) {
 		return
 	}
 
-	if ok := msg.verifyMessage(self.pairing, self.g); !ok {
+	h := sha256.Sum256([]byte(dataToSign))
+	if ok := msg.Verify(self.pairing, self.g, h[:]); !ok {
 		log.Panic("Invalid Message: ", msg)
 	}
 
 	self.stateMutex.Lock()
 	defer self.stateMutex.Unlock()
 
-	self.state.aggSig.ThenMul(msg.aggSig)
-	for i = 0; i < numPeers; i++ {
-		self.state.counters[i] += msg.counters[i]
-	}
+	self.aggSig.Aggregate(msg)
 }
 
 func (self *Peer) Gossip() {
@@ -85,32 +94,34 @@ func (self *Peer) Gossip() {
 
 	for i := 0; i < numRounds; i++ {
 		go self.Send()
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(epoch)
 	}
 
 	finished <- true
 }
 
 func (self *Peer) Init(id int, pairing *pbc.Pairing, g *pbc.Element) {
-	self.id = id
-	self.num = rand.Int() % 10000
-	self.state.counters = make([]int, numPeers)
-	self.state.counters[id] = 1
-
 	self.pairing = pairing
 	self.g = g
+
+	self.state = StateIdle
+
+	self.id = id
+	self.aggSig.Init(pairing)
+	self.aggSig.counters[id] = 1
+
 	self.privKey = pairing.NewZr().Rand()
 	self.PubKey = pairing.NewG2().PowZn(g, self.privKey)
 	self.PubKeySig = self.Sign(self.PubKey.Bytes())
 
-	self.sig = self.Sign([]byte(textToSign))
-	self.state.aggSig = self.pairing.NewG2().Set(self.sig)
+	self.sig = self.Sign([]byte(dataToSign))
+	self.aggSig.sig.Set(self.sig)
 }
 
 func (self *Peer) Sign(data []byte) *pbc.Element {
 	h := sha256.Sum256(data)
 	hash := self.pairing.NewG1().SetFromHash(h[:])
-	return self.pairing.NewG2().PowZn(hash, self.privKey)
+	return self.pairing.NewG1().PowZn(hash, self.privKey)
 }
 
 func (self *Peer) Verify(data []byte, sig *pbc.Element) bool {
@@ -128,5 +139,6 @@ func (self *Peer) VerifyPubKeySig() bool {
 }
 
 func (self *Peer) VerifyState() bool {
-	return self.state.verifyMessage(self.pairing, self.g)
+	h := sha256.Sum256([]byte(dataToSign))
+	return self.aggSig.Verify(self.pairing, self.g, h[:])
 }

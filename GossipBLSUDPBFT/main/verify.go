@@ -6,7 +6,7 @@ import (
 
 func verifyFinalStates(peers []Peer) {
 	for i := 0; i < numPeers; i++ {
-		log.Print(peers[i])
+		log.Print(peers[i].aggSig.counters)
 		if ok := peers[i].VerifyState(); !ok {
 			log.Panic("Aggregate signature verficiation failed for peer", i)
 		}
