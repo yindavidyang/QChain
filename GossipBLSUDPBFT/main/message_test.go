@@ -34,7 +34,7 @@ func TestPreprepareMessage(t *testing.T) {
 	ppMsg.Init(bls.pairing)
 	copy(ppMsg.hash, hash)
 	ppMsg.ProposerID = proposerID
-	ppMsg.sig.Set(sig)
+	ppMsg.ProposerSig.Set(sig)
 
 	if !ppMsg.Verify(bls.pairing, bls.g) {
 		t.Error("ppMsg verification failed: ", ppMsg)
@@ -76,7 +76,7 @@ func TestPrepareMessage(t *testing.T) {
 	pMsg.Init(bls.pairing)
 	copy(pMsg.hash, hash)
 	pMsg.ProposerID = proposerID
-	pMsg.sig.Set(sig)
+	pMsg.ProposerSig.Set(sig)
 	pMsg.aggSig.counters[proposerID] = 1
 	pMsg.aggSig.sig.Set(sig)
 

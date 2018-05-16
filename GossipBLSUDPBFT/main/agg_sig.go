@@ -37,15 +37,15 @@ func (self *AggSig) SetBytes(bytes []byte) {
 	self.sig.SetBytes(bytes[numPeers*4:])
 }
 
-func (self *AggSig) Verify(pairing *pbc.Pairing, g *pbc.Element, h []byte) bool {
-	vPubKey := pairing.NewG2()
-	tempKey := pairing.NewG2()
-	tempNum := pairing.NewZr()
-	for j := 0; j < numPeers; j++ {
-		if (self.counters[j] != 0) {
-			tempNum.SetInt32(int32(self.counters[j]))
-			tempKey.PowZn(pubKeys[j], tempNum)
-			if j == 0 {
+func (self *AggSig) Verify(bls *BLS, h []byte) bool {
+	vPubKey := bls.pairing.NewG2()
+	tempKey := bls.pairing.NewG2()
+	tempNum := bls.pairing.NewZr()
+	for i := 0; i < numPeers; i++ {
+		if (self.counters[i] != 0) {
+			tempNum.SetInt32(int32(self.counters[i]))
+			tempKey.PowZn(pubKeys[i], tempNum)
+			if i == 0 {
 				vPubKey.Set(tempKey)
 			} else {
 				vPubKey.ThenMul(tempKey)
@@ -53,11 +53,7 @@ func (self *AggSig) Verify(pairing *pbc.Pairing, g *pbc.Element, h []byte) bool 
 		}
 	}
 
-	hash := pairing.NewG1().SetFromHash(h[:])
-	temp1 := pairing.NewGT().Pair(hash, vPubKey)
-	temp2 := pairing.NewGT().Pair(self.sig, g)
-
-	return temp1.Equals(temp2)
+	return bls.VerifyHash(h, self.sig, vPubKey)
 }
 
 func (self *AggSig) Copy() *AggSig {
@@ -86,6 +82,15 @@ func (self *AggSig) Aggregate(aggSig *AggSig) {
 	for i := 0; i < numPeers; i++ {
 		self.counters[i] += aggSig.counters[i]
 	}
+}
+
+func (self *AggSig) AggregateOne(id uint32, sig *pbc.Element) {
+	if self.counters[id] != 0 {
+		return
+	}
+
+	self.sig.ThenMul(sig)
+	self.counters[id] = 1
 }
 
 func (self *AggSig) reachQuorum() bool {

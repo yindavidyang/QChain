@@ -12,7 +12,7 @@ const (
 	startPort = 2000
 
 	numPeers  = 10
-	numRounds = 6
+	numRounds = 10
 	bf        = 2
 	// increase epoch size if the program crashes or verification fails
 	epoch      = time.Millisecond * 100
@@ -35,13 +35,12 @@ func verifyPubKeys(peers []Peer) {
 }
 
 func main() {
-	params := pbc.GenerateA(160, 512)
-	pairing := params.NewPairing()
-	g := pairing.NewG2().Rand()
+	bls := &BLS{}
+	bls.Init()
 
 	peers := make([]Peer, numPeers)
 	for i := 0; i < numPeers; i++ {
-		peers[i].Init(uint32(i), pairing, g)
+		peers[i].Init(uint32(i), bls)
 	}
 	verifyPubKeys(peers)
 
@@ -52,10 +51,11 @@ func main() {
 
 	finished = make(chan bool)
 
-	proposerID := 0
+	proposerID := uint32(0)
 	peers[proposerID].state = StatePreprepared
 	h := sha256.Sum256([]byte(dataToSign))
 	peers[proposerID].hash = h[:]
+	peers[proposerID].proposerID = proposerID
 	peers[proposerID].proposerSig = peers[proposerID].SignHash()
 
 	for i := 0; i < numPeers; i++ {

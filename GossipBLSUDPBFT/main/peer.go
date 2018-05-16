@@ -5,24 +5,22 @@ import (
 	"time"
 	"math/rand"
 	"github.com/Nik-U/pbc"
-	"crypto/sha256"
 	"log"
 	"net"
 	"strconv"
 	"sync"
-	"bytes"
+	"crypto/sha256"
 )
 
 type (
 	Peer struct {
+		bls                    *BLS
 		id, proposerID         uint32
 		state                  int
 		hash                   []byte
-		aggSig, prevAggSig     AggSig
-		g                      *pbc.Element
+		aggSig, prevAggSig     *AggSig
 		proposerSig, PubKeySig *pbc.Element
 		PubKey, privKey        *pbc.Element
-		pairing                *pbc.Pairing
 		stateMutex             sync.Mutex
 	}
 )
@@ -59,21 +57,32 @@ func (self *Peer) Send() {
 		switch self.state {
 		case StatePreprepared:
 			ppMsg := &PreprepareMsg{}
-			ppMsg.Init(self.pairing)
+			ppMsg.Init(self.bls.pairing)
 			copy(ppMsg.hash, self.hash)
 			ppMsg.ProposerID = self.id
-			ppMsg.sig.Set(self.proposerSig)
-
+			ppMsg.ProposerSig.Set(self.proposerSig)
 			data = ppMsg.Bytes()
 		case StatePrepared:
 			pMsg := &PrepareMsg{}
-			pMsg.Init(self.pairing)
+			pMsg.Init(self.bls.pairing)
 			copy(pMsg.hash, self.hash)
 			pMsg.ProposerID = self.proposerID
-			pMsg.sig.Set(self.proposerSig)
+			pMsg.ProposerSig.Set(self.proposerSig)
 			pMsg.aggSig = self.aggSig.Copy()
-
 			data = pMsg.Bytes()
+		case StateCommitted:
+			cMsg := &CommitMsg{}
+			cMsg.Init(self.bls.pairing)
+			copy(cMsg.hash, self.hash)
+			cMsg.CAggSig = self.aggSig.Copy()
+			cMsg.PAggSig = self.prevAggSig.Copy()
+			data = cMsg.Bytes()
+		case StateFinal:
+			fMsg := &FinalMsg{}
+			fMsg.Init(self.bls.pairing)
+			copy(fMsg.hash, self.hash)
+			fMsg.CAggSig = self.aggSig.Copy()
+			data = fMsg.Bytes()
 		}
 		self.stateMutex.Unlock()
 
@@ -102,124 +111,28 @@ func (self *Peer) Listen() {
 		atomic.AddInt64(&numRecv, 1)
 
 		switch buffer[0] {
-		case MessagePP:
+		case MsgPreprepare:
 			ppMsg := &PreprepareMsg{}
-			ppMsg.Init(self.pairing)
+			ppMsg.Init(self.bls.pairing)
 			ppMsg.SetBytes(buffer[:n])
-			self.updateStatePP(ppMsg)
-		case MessageP:
+			self.handlePreprepare(ppMsg)
+		case MsgPrepare:
 			pMsg := &PrepareMsg{}
-			pMsg.Init(self.pairing)
+			pMsg.Init(self.bls.pairing)
 			pMsg.SetBytes(buffer[:n])
-			self.updateStateP(pMsg)
+			self.handlePrepare(pMsg)
+		case MsgCommit:
+			cMsg := &CommitMsg{}
+			cMsg.Init(self.bls.pairing)
+			cMsg.SetBytes(buffer[:n])
+			self.handleCommit(cMsg)
+		case MsgFinal:
+			fMsg := &FinalMsg{}
+			fMsg.Init(self.bls.pairing)
+			fMsg.SetBytes(buffer[:n])
+			self.handleFinal(fMsg)
 		}
 	}
-}
-
-func (self *Peer) updateStatePP(msg *PreprepareMsg) {
-	self.stateMutex.Lock()
-	defer self.stateMutex.Unlock()
-
-	switch self.state {
-	case StateIdle:
-		if (!msg.Verify(self.pairing, self.g)) {
-			log.Panic("Message verification failed.", msg)
-		}
-
-		self.state = StatePrepared
-		self.proposerID = msg.ProposerID
-		self.proposerSig = self.pairing.NewG1().Set(msg.sig)
-		self.hash = make([]byte, len(msg.hash))
-		copy(self.hash, msg.hash)
-		self.aggSig.Init(self.pairing)
-		self.aggSig.counters[self.id] = 1
-		self.aggSig.sig = self.SignHash()
-		self.aggSig.counters[msg.ProposerID] = 1
-		self.aggSig.sig.ThenMul(msg.sig)
-
-	case StatePreprepared:
-		log.Panic("Impossible: proposer receives a Preprepare message.")
-	}
-}
-
-func (self *Peer) updateStateP(msg *PrepareMsg) {
-	if self.state == StateFinal || self.state == StateCommitted {
-		return
-	}
-
-	if !msg.Verify(self.pairing, self.g) {
-		log.Panic("Message verification failed.", msg)
-	}
-
-	self.stateMutex.Lock()
-	defer self.stateMutex.Unlock()
-
-	switch self.state {
-	case StateIdle:
-		self.state = StatePrepared
-		self.proposerID = msg.ProposerID
-		self.proposerSig = self.pairing.NewG1().Set(msg.sig)
-		self.hash = make([]byte, len(msg.hash))
-		copy(self.hash, msg.hash)
-		self.aggSig.Init(self.pairing)
-		self.aggSig.counters[self.id] = 1
-		self.aggSig.sig = self.SignHash()
-		self.aggSig.Aggregate(msg.aggSig)
-
-	case StatePreprepared:
-		self.state = StatePrepared
-		if self.proposerID != msg.ProposerID {
-			log.Panic("Incorrect proposer ID in message: ", msg)
-		}
-		if !self.proposerSig.Equals(msg.sig) {
-			log.Panic("Incorrect proposer signature in message: ", msg)
-		}
-		if bytes.Compare(self.hash, msg.hash) != 0 {
-			log.Panic("Incorrect hash in message:", msg)
-		}
-		self.aggSig.Init(self.pairing)
-		self.aggSig.counters[self.id] = 1
-		self.aggSig.sig.Set(self.proposerSig)
-		self.aggSig.Aggregate(msg.aggSig)
-
-	case StatePrepared:
-		self.state = StatePrepared
-		if self.proposerID != msg.ProposerID {
-			log.Panic("Incorrect proposer ID in message: ", msg)
-		}
-		if !self.proposerSig.Equals(msg.sig) {
-			log.Panic("Incorrect proposer signature in message: ", msg)
-		}
-		if bytes.Compare(self.hash, msg.hash) != 0 {
-			log.Panic("Incorrect hash in message:", msg)
-		}
-		self.aggSig.Aggregate(msg.aggSig)
-	}
-}
-
-func (self *Peer) updateStateC(msg *CommitMsg) {
-	if self.state == StateFinal {
-		return
-	}
-
-	self.stateMutex.Lock()
-	defer self.stateMutex.Unlock()
-
-	if self.state == StateCommitted {
-		// do aggregation. if reaches quorum, set state to final
-	}
-	self.state = StateCommitted
-}
-
-func (self *Peer) updateStateF(msg *FinalMsg) {
-	if self.state == StateFinal {
-		return
-	}
-
-	self.stateMutex.Lock()
-	defer self.stateMutex.Unlock()
-
-	self.state = StateFinal
 }
 
 func (self *Peer) Gossip() {
@@ -233,37 +146,43 @@ func (self *Peer) Gossip() {
 	finished <- true
 }
 
-func (self *Peer) Init(id uint32, pairing *pbc.Pairing, g *pbc.Element) {
-	self.pairing = pairing
-	self.g = g
+func (self *Peer) Init(id uint32, bls *BLS) {
+	self.bls = bls
 
 	self.state = StateIdle
 	self.id = id
+	self.hash = make([]byte, sha256.Size)
 
-	self.privKey = pairing.NewZr().Rand()
-	self.PubKey = pairing.NewG2().PowZn(g, self.privKey)
+	self.privKey, self.PubKey = bls.GenKey()
 	self.PubKeySig = self.Sign(self.PubKey.Bytes())
 }
 
+func (self *Peer) InitAggSig() {
+	self.aggSig = &AggSig{}
+	self.aggSig.Init(self.bls.pairing)
+	self.aggSig.counters[self.id] = 1
+	if self.state == StateCommitted {
+		self.aggSig.sig.Set(self.SignCommittedHash())
+	} else {
+		self.aggSig.sig.Set(self.SignHash())
+	}
+}
+
 func (self *Peer) Sign(data []byte) *pbc.Element {
-	h := sha256.Sum256(data)
-	hash := self.pairing.NewG1().SetFromHash(h[:])
-	return self.pairing.NewG1().PowZn(hash, self.privKey)
+	return self.bls.SignBytes(data, self.privKey)
 }
 
 func (self *Peer) SignHash() *pbc.Element {
-	h := self.pairing.NewG1().SetFromHash(self.hash)
-	return self.pairing.NewG1().PowZn(h, self.privKey)
+	return self.bls.SignHash(self.hash, self.privKey)
+}
+
+func (self *Peer) SignCommittedHash() *pbc.Element {
+	text := string(self.hash) + TextC
+	return self.bls.SignString(text, self.privKey)
 }
 
 func (self *Peer) Verify(data []byte, sig *pbc.Element) bool {
-	h := sha256.Sum256(data)
-	hash := self.pairing.NewG1().SetFromHash(h[:])
-
-	temp1 := self.pairing.NewGT().Pair(hash, self.PubKey)
-	temp2 := self.pairing.NewGT().Pair(sig, self.g)
-
-	return temp1.Equals(temp2)
+	return self.bls.VerifyBytes(data, sig, self.PubKey)
 }
 
 func (self *Peer) VerifyPubKeySig() bool {
