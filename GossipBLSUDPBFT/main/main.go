@@ -2,8 +2,9 @@ package main
 
 import (
 	"log"
-	"github.com/NIk-U/pbc"
+	"github.com/Nik-U/pbc"
 	"time"
+	"crypto/sha256"
 )
 
 const (
@@ -11,19 +12,11 @@ const (
 	startPort = 2000
 
 	numPeers  = 10
-	numRounds = 4
+	numRounds = 6
 	bf        = 2
 	// increase epoch size if the program crashes or verification fails
 	epoch      = time.Millisecond * 100
 	dataToSign = "Gossip BLS UDP BFT test data"
-)
-
-const (
-	StateIdle        = iota
-	StatePreprepared
-	StatePrepared
-	StateCommitted
-	StateFinal
 )
 
 var (
@@ -32,6 +25,15 @@ var (
 	pubKeys          []*pbc.Element
 )
 
+// Verifying individual public keys is necessary to defend against related key attacks
+func verifyPubKeys(peers []Peer) {
+	for i := 0; i < numPeers; i++ {
+		if ok := peers[i].VerifyPubKeySig(); !ok {
+			log.Panic("Public key signature verification failed for Peer: ", i)
+		}
+	}
+}
+
 func main() {
 	params := pbc.GenerateA(160, 512)
 	pairing := params.NewPairing()
@@ -39,7 +41,7 @@ func main() {
 
 	peers := make([]Peer, numPeers)
 	for i := 0; i < numPeers; i++ {
-		peers[i].Init(i, pairing, g)
+		peers[i].Init(uint32(i), pairing, g)
 	}
 	verifyPubKeys(peers)
 
@@ -50,6 +52,12 @@ func main() {
 
 	finished = make(chan bool)
 
+	proposerID := 0
+	peers[proposerID].state = StatePreprepared
+	h := sha256.Sum256([]byte(dataToSign))
+	peers[proposerID].hash = h[:]
+	peers[proposerID].proposerSig = peers[proposerID].SignHash()
+
 	for i := 0; i < numPeers; i++ {
 		go peers[i].Gossip()
 	}
@@ -59,5 +67,8 @@ func main() {
 
 	log.Print("Number of messages sent: ", numSend)
 	log.Print("Number of messages received: ", numRecv)
-	verifyFinalStates(peers)
+
+	for i :=0; i < numPeers; i++ {
+		log.Print(peers[i].state, " ", peers[i].aggSig.counters)
+	}
 }

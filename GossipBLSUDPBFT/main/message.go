@@ -4,6 +4,7 @@ import (
 	"github.com/Nik-U/pbc"
 	"crypto/sha256"
 	"encoding/binary"
+	"log"
 )
 
 const (
@@ -90,11 +91,16 @@ func (self *PreprepareMsg) Verify(pairing *pbc.Pairing, g *pbc.Element) bool {
 	hash := pairing.NewG1().SetFromHash(self.hash[:])
 	temp1 := pairing.NewGT().Pair(hash, vPubKey)
 	temp2 := pairing.NewGT().Pair(self.sig, g)
-	return temp1.Equals(temp2)
+	if !temp1.Equals(temp2) {
+		log.Panic("Verification failed: ", self)
+		return false
+	}
+	return true
 }
 
 func (self *PrepareMsg) Init(pairing *pbc.Pairing) {
 	self.PreprepareMsg.Init(pairing)
+	self.aggSig = &AggSig{}
 	self.aggSig.Init(pairing)
 }
 
@@ -116,14 +122,20 @@ func (self *PrepareMsg) SetBytes(bytes []byte) {
 }
 
 func (self *PrepareMsg) Verify(pairing *pbc.Pairing, g *pbc.Element) bool {
-	if ok := self.PreprepareMsg.Verify(pairing, g); !ok {
+	if !self.PreprepareMsg.Verify(pairing, g) {
+		log.Panic("Verification failed: ", self)
 		return false
 	}
-	return self.aggSig.Verify(pairing, g, self.hash)
+	if !self.aggSig.Verify(pairing, g, self.hash) {
+		log.Panic("Verification failed: ", self)
+		return false
+	}
+	return true
 }
 
 func (self *FinalMsg) Init(pairing *pbc.Pairing) {
 	self.Message.Init()
+	self.CAggSig = &AggSig{}
 	self.CAggSig.Init(pairing)
 }
 
@@ -155,6 +167,7 @@ func (self *FinalMsg) Verify(pairing *pbc.Pairing, g *pbc.Element) bool {
 
 func (self *CommitMsg) Init(pairing *pbc.Pairing) {
 	self.FinalMsg.Init(pairing)
+	self.PAggSig = &AggSig{}
 	self.PAggSig.Init(pairing)
 }
 
@@ -181,5 +194,8 @@ func (self *CommitMsg) Verify(pairing *pbc.Pairing, g *pbc.Element) bool {
 	if ok := self.CAggSig.Verify(pairing, g, h[:]); !ok {
 		return false
 	}
-	return self.PAggSig.Verify(pairing, g, self.hash)
+	if ok := self.PAggSig.Verify(pairing, g, self.hash); !ok {
+		return false
+	}
+	return self.PAggSig.reachQuorum()
 }

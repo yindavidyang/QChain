@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/NIk-U/pbc"
+	"github.com/Nik-U/pbc"
 	"encoding/binary"
 )
 
@@ -42,12 +42,14 @@ func (self *AggSig) Verify(pairing *pbc.Pairing, g *pbc.Element, h []byte) bool 
 	tempKey := pairing.NewG2()
 	tempNum := pairing.NewZr()
 	for j := 0; j < numPeers; j++ {
-		tempNum.SetInt32(int32(self.counters[j]))
-		tempKey.PowZn(pubKeys[j], tempNum)
-		if j == 0 {
-			vPubKey.Set(tempKey)
-		} else {
-			vPubKey.ThenMul(tempKey)
+		if (self.counters[j] != 0) {
+			tempNum.SetInt32(int32(self.counters[j]))
+			tempKey.PowZn(pubKeys[j], tempNum)
+			if j == 0 {
+				vPubKey.Set(tempKey)
+			} else {
+				vPubKey.ThenMul(tempKey)
+			}
 		}
 	}
 
@@ -69,6 +71,17 @@ func (self *AggSig) Copy() *AggSig {
 }
 
 func (self *AggSig) Aggregate(aggSig *AggSig) {
+	var i int
+
+	for i = 0; i < numPeers; i++ {
+		if self.counters[i] == 0 && aggSig.counters[i] != 0 {
+			break
+		}
+	}
+	if i == numPeers {
+		return
+	}
+
 	self.sig.ThenMul(aggSig.sig)
 	for i := 0; i < numPeers; i++ {
 		self.counters[i] += aggSig.counters[i]
