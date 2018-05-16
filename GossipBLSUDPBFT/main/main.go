@@ -11,11 +11,11 @@ const (
 	address   = "127.0.0.1"
 	startPort = 2000
 
-	numPeers  = 10
+	numPeers  = 50
 	numRounds = 10
-	bf        = 2
+	bf        = 5
 	// increase epoch size if the program crashes or verification fails
-	epoch      = time.Millisecond * 100
+	epoch      = time.Millisecond * 1000
 	dataToSign = "Gossip BLS UDP BFT test data"
 )
 

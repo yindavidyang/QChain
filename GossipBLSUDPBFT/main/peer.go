@@ -57,32 +57,16 @@ func (self *Peer) Send() {
 		switch self.state {
 		case StatePreprepared:
 			ppMsg := &PreprepareMsg{}
-			ppMsg.Init(self.bls.pairing)
-			copy(ppMsg.hash, self.hash)
-			ppMsg.ProposerID = self.id
-			ppMsg.ProposerSig.Set(self.proposerSig)
-			data = ppMsg.Bytes()
+			data = ppMsg.BytesFromData(self.hash, self.proposerID, self.proposerSig)
 		case StatePrepared:
 			pMsg := &PrepareMsg{}
-			pMsg.Init(self.bls.pairing)
-			copy(pMsg.hash, self.hash)
-			pMsg.ProposerID = self.proposerID
-			pMsg.ProposerSig.Set(self.proposerSig)
-			pMsg.aggSig = self.aggSig.Copy()
-			data = pMsg.Bytes()
+			data = pMsg.BytesFromData(self.hash, self.proposerID, self.proposerSig, self.aggSig)
 		case StateCommitted:
 			cMsg := &CommitMsg{}
-			cMsg.Init(self.bls.pairing)
-			copy(cMsg.hash, self.hash)
-			cMsg.CAggSig = self.aggSig.Copy()
-			cMsg.PAggSig = self.prevAggSig.Copy()
-			data = cMsg.Bytes()
+			data = cMsg.BytesFromData(self.hash, self.aggSig, self.prevAggSig)
 		case StateFinal:
 			fMsg := &FinalMsg{}
-			fMsg.Init(self.bls.pairing)
-			copy(fMsg.hash, self.hash)
-			fMsg.CAggSig = self.aggSig.Copy()
-			data = fMsg.Bytes()
+			data = fMsg.BytesFromData(self.hash, self.aggSig)
 		}
 		self.stateMutex.Unlock()
 
@@ -111,22 +95,22 @@ func (self *Peer) Listen() {
 		atomic.AddInt64(&numRecv, 1)
 
 		switch buffer[0] {
-		case MsgPreprepare:
+		case MsgTypePreprepare:
 			ppMsg := &PreprepareMsg{}
 			ppMsg.Init(self.bls.pairing)
 			ppMsg.SetBytes(buffer[:n])
 			self.handlePreprepare(ppMsg)
-		case MsgPrepare:
+		case MsgTypePrepare:
 			pMsg := &PrepareMsg{}
 			pMsg.Init(self.bls.pairing)
 			pMsg.SetBytes(buffer[:n])
 			self.handlePrepare(pMsg)
-		case MsgCommit:
+		case MsgTypeCommit:
 			cMsg := &CommitMsg{}
 			cMsg.Init(self.bls.pairing)
 			cMsg.SetBytes(buffer[:n])
 			self.handleCommit(cMsg)
-		case MsgFinal:
+		case MsgTypeFinal:
 			fMsg := &FinalMsg{}
 			fMsg.Init(self.bls.pairing)
 			fMsg.SetBytes(buffer[:n])

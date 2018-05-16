@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	MsgPreprepare byte = iota
-	MsgPrepare
-	MsgCommit
-	MsgFinal
+	MsgTypePreprepare byte = iota
+	MsgTypePrepare
+	MsgTypeCommit
+	MsgTypeFinal
 )
 
 const (
@@ -66,11 +66,23 @@ func (self *PreprepareMsg) Len() int {
 
 func (self *PreprepareMsg) Bytes() []byte {
 	bytes := make([]byte, self.Len())
-	bytes[0] = MsgPreprepare
+	bytes[0] = MsgTypePreprepare
 	copy(bytes[1:], self.hash)
 	binary.LittleEndian.PutUint32(bytes[1+self.Message.Len():], self.ProposerID)
 	copy(bytes[1+self.Message.Len()+4:], self.ProposerSig.Bytes())
 	return bytes
+}
+
+func (self *PreprepareMsg) BytesFromData(hash []byte, proposerID uint32, proposerSig *pbc.Element) []byte {
+	b := make([]byte, 1+len(hash)+4+proposerSig.BytesLen())
+	b[0] = MsgTypePreprepare
+	i := 1
+	copy(b[i:], hash)
+	i += len(hash)
+	binary.LittleEndian.PutUint32(b[i:], proposerID)
+	i += 4
+	copy(b[i:], proposerSig.Bytes())
+	return b
 }
 
 func (self *PreprepareMsg) SetBytes(bytes []byte) {
@@ -97,8 +109,22 @@ func (self *PrepareMsg) Bytes() []byte {
 	bytes := make([]byte, self.Len())
 	copy(bytes[:], self.PreprepareMsg.Bytes())
 	copy(bytes[self.PreprepareMsg.Len():], self.aggSig.Bytes())
-	bytes[0] = MsgPrepare
+	bytes[0] = MsgTypePrepare
 	return bytes
+}
+
+func (self *PrepareMsg) BytesFromData(hash []byte, proposerID uint32, proposerSig *pbc.Element, aggSig *AggSig) []byte {
+	b := make([]byte, 1+len(hash)+4+proposerSig.BytesLen()+aggSig.Len())
+	b[0] = MsgTypePrepare
+	i := 1
+	copy(b[i:], hash)
+	i += len(hash)
+	binary.LittleEndian.PutUint32(b[i:], proposerID)
+	i += 4
+	copy(b[i:], proposerSig.Bytes())
+	i += proposerSig.BytesLen()
+	copy(b[i:], aggSig.Bytes())
+	return b
 }
 
 func (self *PrepareMsg) SetBytes(bytes []byte) {
@@ -134,10 +160,20 @@ func (self *FinalMsg) Len() int {
 
 func (self *FinalMsg) Bytes() []byte {
 	bytes := make([]byte, self.Len())
-	bytes[0] = MsgFinal
+	bytes[0] = MsgTypeFinal
 	copy(bytes[1:], self.hash)
 	copy(bytes[1+self.Message.Len():], self.CAggSig.Bytes())
 	return bytes
+}
+
+func (self *FinalMsg) BytesFromData(hash []byte, aggSig *AggSig) []byte {
+	b := make([]byte, 1+len(hash)+aggSig.Len())
+	b[0] = MsgTypeFinal
+	i := 1
+	copy(b[i:], hash)
+	i += len(hash)
+	copy(b[i:], aggSig.Bytes())
+	return b
 }
 
 func (self *FinalMsg) SetBytes(bytes []byte) {
@@ -168,8 +204,20 @@ func (self *CommitMsg) Bytes() []byte {
 	bytes := make([]byte, self.Len())
 	copy(bytes[:], self.FinalMsg.Bytes())
 	copy(bytes[self.FinalMsg.Len():], self.PAggSig.Bytes())
-	bytes[0] = MsgCommit
+	bytes[0] = MsgTypeCommit
 	return bytes
+}
+
+func (self *CommitMsg) BytesFromData(hash []byte, aggSig *AggSig, prevAggSig *AggSig) []byte {
+	b := make([]byte, 1+len(hash)+aggSig.Len()+prevAggSig.Len())
+	b[0] = MsgTypeCommit
+	i := 1
+	copy(b[i:], hash)
+	i += len(hash)
+	copy(b[i:], aggSig.Bytes())
+	i += aggSig.Len()
+	copy(b[i:], prevAggSig.Bytes())
+	return b
 }
 
 func (self *CommitMsg) SetBytes(bytes []byte) {
