@@ -11,13 +11,12 @@ const (
 	startPort = 2000
 
 	numPeers  = 10
-	numRounds = 10
-	bf        = 3
+	numRounds = 100
+	bf        = 2
 	// increase epoch size if the program crashes or verification fails
-	epoch      = time.Millisecond * 100
-	dataToSign = "Gossip BLS UDP BFT test data"
+	epoch = time.Millisecond * 100
 
-	ProposerID = 0
+	BlockData = "Gossip BLS UDP BFT pair method test data block *********"
 )
 
 var (
@@ -27,7 +26,7 @@ var (
 )
 
 // Verifying individual public keys is necessary to defend against related key attacks
-func verifyPubKeys(peers []Peer) {
+func verifyPubKeys(peers []Validator) {
 	for i := 0; i < numPeers; i++ {
 		if !peers[i].VerifyPubKeySig() {
 			log.Panic("Public key signature verification failed for Peer: ", i)
@@ -39,7 +38,7 @@ func main() {
 	bls := &BLS{}
 	bls.Init()
 
-	peers := make([]Peer, numPeers)
+	peers := make([]Validator, numPeers)
 	for i := 0; i < numPeers; i++ {
 		peers[i].Init(uint32(i), bls)
 	}
@@ -52,7 +51,11 @@ func main() {
 
 	finished = make(chan bool)
 
-	peers[ProposerID].state = StatePreprepared
+	proposerID := getProposerID(0)
+	peers[proposerID].state = StatePrepared
+	peers[proposerID].blockID = 0
+	peers[proposerID].hash = getBlockHash(0)
+	peers[proposerID].InitAggSig()
 
 	for i := 0; i < numPeers; i++ {
 		go peers[i].Gossip()
@@ -65,6 +68,6 @@ func main() {
 	log.Print("Number of messages received: ", numRecv)
 
 	for i := 0; i < numPeers; i++ {
-		log.Print(peers[i].state, " ", peers[i].aggSig.counters)
+		log.Print(peers[i].blockID, " ", peers[i].state, " ", peers[i].aggSig.counters)
 	}
 }

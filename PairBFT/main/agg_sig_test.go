@@ -16,17 +16,17 @@ var (
 )
 
 func TestAggSigSerialization(t *testing.T) {
-	params := pbc.GenerateA(160, 512)
-	pairing := params.NewPairing()
+	bls := &BLS{}
+	bls.Init()
 
 	aggSig := &AggSig{}
-	aggSig.Init(pairing)
+	aggSig.Init(bls)
 
 	log.Print("Length of aggSig: ", aggSig.Len())
 	b := aggSig.Bytes()
 
 	aggSig2 := &AggSig{}
-	aggSig2.Init(pairing)
+	aggSig2.Init(bls)
 	aggSig2.SetBytes(b)
 	b2 := aggSig2.Bytes()
 
@@ -36,11 +36,11 @@ func TestAggSigSerialization(t *testing.T) {
 }
 
 func TestAggSigCopy(t *testing.T) {
-	params := pbc.GenerateA(160, 512)
-	pairing := params.NewPairing()
+	bls := &BLS{}
+	bls.Init()
 
 	aggSig := &AggSig{}
-	aggSig.Init(pairing)
+	aggSig.Init(bls)
 
 	aggSig2 := aggSig.Copy()
 	b := aggSig.Bytes()

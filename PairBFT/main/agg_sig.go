@@ -104,7 +104,7 @@ func (self *AggSig) AggregateOne(id uint32, sig *pbc.Element) {
 	self.counters[id] = 1
 }
 
-func (self *AggSig) reachQuorum() bool {
+func (self *AggSig) ReachQuorum() bool {
 	c := 0
 	for i := 0; i < numPeers; i++ {
 		if self.counters[i] > 0 {

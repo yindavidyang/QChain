@@ -13,31 +13,20 @@ import (
 )
 
 type (
-	Peer struct {
+	Validator struct {
 		bls                    *BLS
-		id, proposerID         uint32
+		id                     uint32
+		blockID                uint32
 		state                  int
-		hash                   []byte
+		hash, prevHash         []byte
 		aggSig, prevAggSig     *AggSig
-		proposerSig, PubKeySig *pbc.Element
+		PubKeySig              *pbc.Element
 		PubKey, privKey        *pbc.Element
 		stateMutex             sync.Mutex
 	}
 )
 
-const (
-	StateIdle        = iota
-	StatePreprepared
-	StatePrepared
-	StateCommitted
-	StateFinal
-)
-
-const (
-	MaxPacketSize = 4096
-)
-
-func (self *Peer) Send() {
+func (self *Validator) Send() {
 	if self.state == StateIdle {
 		return
 	}
@@ -55,18 +44,16 @@ func (self *Peer) Send() {
 			data []byte
 		)
 		switch self.state {
-		case StatePreprepared:
-			ppMsg := &PreprepareMsg{}
-			data = ppMsg.BytesFromData(self.hash, self.proposerID, self.proposerSig)
 		case StatePrepared:
 			pMsg := &PrepareMsg{}
-			data = pMsg.BytesFromData(self.hash, self.proposerID, self.proposerSig, self.aggSig)
-		case StateCommitted:
+			if self.blockID == 0 {
+				data = pMsg.BytesFromData(self.blockID, self.hash, self.aggSig, self.aggSig)
+			} else {
+				data = pMsg.BytesFromData(self.blockID, self.hash, self.prevAggSig, self.aggSig)
+			}
+		case StateCommitted, StateFinal:
 			cMsg := &CommitMsg{}
-			data = cMsg.BytesFromData(self.hash, self.aggSig, self.prevAggSig)
-		case StateFinal:
-			fMsg := &FinalMsg{}
-			data = fMsg.BytesFromData(self.hash, self.aggSig)
+			data = cMsg.BytesFromData(self.blockID, self.hash, self.aggSig, self.prevAggSig)
 		}
 		self.stateMutex.Unlock()
 
@@ -79,7 +66,7 @@ func (self *Peer) Send() {
 	}
 }
 
-func (self *Peer) Listen() {
+func (self *Validator) Listen() {
 	pc, err := net.ListenPacket("udp", address+":"+strconv.Itoa(int(startPort+self.id)))
 	if err != nil {
 		log.Panic("Error listening to address: ", err)
@@ -95,31 +82,21 @@ func (self *Peer) Listen() {
 		atomic.AddInt64(&numRecv, 1)
 
 		switch buffer[0] {
-		case MsgTypePreprepare:
-			ppMsg := &PreprepareMsg{}
-			ppMsg.Init(self.bls.pairing)
-			ppMsg.SetBytes(buffer[:n])
-			self.handlePreprepare(ppMsg)
 		case MsgTypePrepare:
 			pMsg := &PrepareMsg{}
-			pMsg.Init(self.bls.pairing)
+			pMsg.Init(self.bls)
 			pMsg.SetBytes(buffer[:n])
 			self.handlePrepare(pMsg)
 		case MsgTypeCommit:
 			cMsg := &CommitMsg{}
-			cMsg.Init(self.bls.pairing)
+			cMsg.Init(self.bls)
 			cMsg.SetBytes(buffer[:n])
 			self.handleCommit(cMsg)
-		case MsgTypeFinal:
-			fMsg := &FinalMsg{}
-			fMsg.Init(self.bls.pairing)
-			fMsg.SetBytes(buffer[:n])
-			self.handleFinal(fMsg)
 		}
 	}
 }
 
-func (self *Peer) Gossip() {
+func (self *Validator) Gossip() {
 	go self.Listen()
 
 	for i := 0; i < numRounds; i++ {
@@ -130,20 +107,21 @@ func (self *Peer) Gossip() {
 	finished <- true
 }
 
-func (self *Peer) Init(id uint32, bls *BLS) {
+func (self *Validator) Init(id uint32, bls *BLS) {
 	self.bls = bls
 
 	self.state = StateIdle
 	self.id = id
 	self.hash = make([]byte, sha256.Size)
+	self.blockID = 0
 
 	self.privKey, self.PubKey = bls.GenKey()
 	self.PubKeySig = self.Sign(self.PubKey.Bytes())
 }
 
-func (self *Peer) InitAggSig() {
+func (self *Validator) InitAggSig() {
 	self.aggSig = &AggSig{}
-	self.aggSig.Init(self.bls.pairing)
+	self.aggSig.Init(self.bls)
 	self.aggSig.counters[self.id] = 1
 	if self.state == StateCommitted {
 		self.aggSig.sig.Set(self.SignCommittedHash())
@@ -152,23 +130,23 @@ func (self *Peer) InitAggSig() {
 	}
 }
 
-func (self *Peer) Sign(data []byte) *pbc.Element {
+func (self *Validator) Sign(data []byte) *pbc.Element {
 	return self.bls.SignBytes(data, self.privKey)
 }
 
-func (self *Peer) SignHash() *pbc.Element {
+func (self *Validator) SignHash() *pbc.Element {
 	return self.bls.SignHash(self.hash, self.privKey)
 }
 
-func (self *Peer) SignCommittedHash() *pbc.Element {
-	text := string(self.hash) + TextC
+func (self *Validator) SignCommittedHash() *pbc.Element {
+	text := string(self.hash) + CommitNounce
 	return self.bls.SignString(text, self.privKey)
 }
 
-func (self *Peer) Verify(data []byte, sig *pbc.Element) bool {
+func (self *Validator) Verify(data []byte, sig *pbc.Element) bool {
 	return self.bls.VerifyBytes(data, sig, self.PubKey)
 }
 
-func (self *Peer) VerifyPubKeySig() bool {
+func (self *Validator) VerifyPubKeySig() bool {
 	return self.Verify(self.PubKey.Bytes(), self.PubKeySig)
 }
