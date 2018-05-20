@@ -4,7 +4,6 @@ import (
 	"log"
 	"github.com/Nik-U/pbc"
 	"time"
-	"crypto/sha256"
 )
 
 const (
@@ -17,6 +16,8 @@ const (
 	// increase epoch size if the program crashes or verification fails
 	epoch      = time.Millisecond * 100
 	dataToSign = "Gossip BLS UDP BFT test data"
+
+	ProposerID = 0
 )
 
 var (
@@ -51,12 +52,7 @@ func main() {
 
 	finished = make(chan bool)
 
-	proposerID := uint32(0)
-	peers[proposerID].state = StatePreprepared
-	h := sha256.Sum256([]byte(dataToSign))
-	peers[proposerID].hash = h[:]
-	peers[proposerID].proposerID = proposerID
-	peers[proposerID].proposerSig = peers[proposerID].SignHash()
+	peers[ProposerID].state = StatePreprepared
 
 	for i := 0; i < numPeers; i++ {
 		go peers[i].Gossip()
@@ -68,7 +64,7 @@ func main() {
 	log.Print("Number of messages sent: ", numSend)
 	log.Print("Number of messages received: ", numRecv)
 
-	for i :=0; i < numPeers; i++ {
+	for i := 0; i < numPeers; i++ {
 		log.Print(peers[i].state, " ", peers[i].aggSig.counters)
 	}
 }
