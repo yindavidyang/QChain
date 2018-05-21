@@ -5,24 +5,27 @@ import (
 	"time"
 	"math/rand"
 	"github.com/Nik-U/pbc"
-	"log"
 	"net"
 	"strconv"
 	"sync"
 	"crypto/sha256"
+	"github.com/sirupsen/logrus"
+	"path/filepath"
+	"os"
 )
 
 type (
 	Validator struct {
-		bls                    *BLS
-		id                     uint32
-		blockID                uint32
-		state                  int
-		hash, prevHash         []byte
-		aggSig, prevAggSig     *AggSig
-		PubKeySig              *pbc.Element
-		PubKey, privKey        *pbc.Element
-		stateMutex             sync.Mutex
+		bls                *BLS
+		id                 uint32
+		blockID            uint32
+		state              int
+		hash, prevHash     []byte
+		aggSig, prevAggSig *AggSig
+		PubKeySig          *pbc.Element
+		PubKey, privKey    *pbc.Element
+		stateMutex         sync.Mutex
+		log                *logrus.Logger
 	}
 )
 
@@ -33,7 +36,7 @@ func (self *Validator) Send() {
 	for i := 0; i < bf; i++ {
 
 		// Randomly choose another peer
-		rcpt := rand.Uint32() % (numPeers - 1)
+		rcpt := rand.Uint32() % (numValidators - 1)
 		if rcpt >= self.id {
 			rcpt ++
 		}
@@ -51,9 +54,11 @@ func (self *Validator) Send() {
 			} else {
 				data = pMsg.BytesFromData(self.blockID, self.hash, self.prevAggSig, self.aggSig)
 			}
+			self.log.Debug("Prepare->", strconv.Itoa(int(rcpt)), "@", self.blockID, ":", self.aggSig.counters)
 		case StateCommitted, StateFinal:
 			cMsg := &CommitMsg{}
 			data = cMsg.BytesFromData(self.blockID, self.hash, self.aggSig, self.prevAggSig)
+			self.log.Debug("Commit->", strconv.Itoa(int(rcpt)), "@", self.blockID, ":", self.aggSig.counters)
 		}
 		self.stateMutex.Unlock()
 
@@ -92,6 +97,11 @@ func (self *Validator) Listen() {
 			cMsg.Init(self.bls)
 			cMsg.SetBytes(buffer[:n])
 			self.handleCommit(cMsg)
+		case MsgTypeCommitPrepare:
+			cpMsg := &CommitPrepareMsg{}
+			cpMsg.Init(self.bls)
+			cpMsg.SetBytes(buffer[:n])
+			self.handleCommitPrepare(cpMsg)
 		}
 	}
 }
@@ -108,6 +118,21 @@ func (self *Validator) Gossip() {
 }
 
 func (self *Validator) Init(id uint32, bls *BLS) {
+	self.log = logrus.New()
+	self.log.SetLevel(logLevel)
+	fileName, _ := filepath.Abs("log/validator" + strconv.Itoa(int(id)) + ".log")
+
+	if _, err := os.Stat(fileName); err == nil {
+		os.Remove(fileName)
+	}
+
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY, 0666)
+	if err == nil {
+		self.log.Out = file
+	} else {
+		self.log.Info("Failed to log to file, using default stdout")
+	}
+
 	self.bls = bls
 
 	self.state = StateIdle
@@ -116,6 +141,11 @@ func (self *Validator) Init(id uint32, bls *BLS) {
 	self.blockID = 0
 
 	self.privKey, self.PubKey = bls.GenKey()
+	self.log.Print("BLS params: ", bls.params)
+	self.log.Print("BLS g: ", bls.g)
+	self.log.Print("Public key: ", self.PubKey)
+	self.log.Debug("Private key: ", self.privKey)
+
 	self.PubKeySig = self.Sign(self.PubKey.Bytes())
 }
 
@@ -149,4 +179,41 @@ func (self *Validator) Verify(data []byte, sig *pbc.Element) bool {
 
 func (self *Validator) VerifyPubKeySig() bool {
 	return self.Verify(self.PubKey.Bytes(), self.PubKeySig)
+}
+
+func (self *Validator) finalizeBlock() {
+	self.state = StateFinal
+	self.log.Print("Finalized@", self.blockID, ":", self.aggSig.counters)
+	// Todo: verify the block. Slash the proposer if verification fails.
+}
+
+func (self *Validator) proposeBlock(blockID uint32) {
+	self.state = StatePrepared
+	self.blockID = blockID
+	self.prevHash = self.hash
+	self.hash = getBlockHash(self.blockID)
+	self.prevAggSig = self.aggSig
+	self.InitAggSig()
+	self.log.Print("Propose@", self.blockID, "#", self.hash)
+}
+
+func (self *Validator) prepareBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+	self.state = StatePrepared
+	self.prevHash = self.hash
+	self.hash = hash
+	self.blockID = blockID
+	self.InitAggSig()
+	self.aggSig.Aggregate(aggSig)
+	self.prevAggSig = prevAggSig
+	self.log.Print("Prepared@", self.blockID, ":", self.aggSig.counters)
+}
+
+func (self *Validator) logMessageVerificationFailure(msg *Msg) {
+	self.log.Print("Message verification failed.")
+	self.log.Print("@", msg.blockID)
+	self.log.Print("#", msg.hash)
+	self.log.Print("Self#", self.hash)
+	self.log.Print("Self prev#", self.prevHash)
+	self.log.Print("PSig:", msg.PSig.counters, msg.PSig.sig)
+	self.log.Print("CSig:", msg.CSig.counters, msg.CSig.sig)
 }

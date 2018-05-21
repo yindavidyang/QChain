@@ -10,7 +10,7 @@ const (
 	LenBlockID = 4
 	LenHash    = sha256.Size
 	LenSig     = 128
-	LenAggSig  = numPeers*4 + LenSig
+	LenAggSig  = numValidators*4 + LenSig
 	LenMsgType = 1
 )
 
@@ -22,10 +22,12 @@ const (
 )
 
 const (
-	StateIdle        = iota
+	StateIdle              = iota
 	StatePrepared
 	StateCommitted
 	StateFinal
+	StateCommittedPrepared
+	StateFinalPrepared
 )
 
 const (

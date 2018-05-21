@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"log"
 )
 
 type (
@@ -65,10 +64,6 @@ func (self *Msg) Len() int {
 	return LenMsgType + LenBlockID + LenHash + LenAggSig*2
 }
 
-func (self *Msg) Bytes() []byte {
-	return self.BytesFromData(self.blockID, self.hash, self.CSig, self.PSig)
-}
-
 func (self *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	i := 0
 	b := make([]byte, self.Len())
@@ -110,43 +105,31 @@ func (self *Msg) VerifyCSig(bls *BLS, hash []byte) bool {
 	return self.CSig.Verify(bls, h[:])
 }
 
-func (self *PrepareMsg) Bytes() []byte {
-	return self.BytesFromData(self.blockID, self.hash, self.CSig, self.PSig)
-}
-
 func (self *PrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	b := self.Msg.BytesFromData(blockID, hash, cSig, pSig)
 	b[0] = MsgTypePrepare
 	return b
 }
 
-func (self *CommitMsg) Bytes() []byte {
-	return self.BytesFromData(self.blockID, self.hash, self.CSig, self.PSig)
+func (self *PrepareMsg) Verify(bls *BLS, prevHash []byte) bool {
+	if !self.VerifyPSig(bls, self.hash) {
+		return false
+	}
+	if self.blockID > 0 {
+		if !self.VerifyCSig(bls, prevHash) {
+			return false
+		}
+		if !self.CSig.ReachQuorum() {
+			return false
+		}
+	}
+	return true
 }
 
 func (self *CommitMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	b := self.Msg.BytesFromData(blockID, hash, cSig, pSig)
 	b[0] = MsgTypeCommit
 	return b
-}
-
-func (self *PrepareMsg) Verify(bls *BLS, prevHash []byte) bool {
-	if !self.VerifyPSig(bls, self.hash) {
-		log.Panic("Message verification failed.", self)
-		return false
-	}
-	if self.blockID > 0 {
-		if !self.VerifyCSig(bls, prevHash) {
-			log.Print(self.CSig)
-			log.Panic("Message verification failed.", prevHash)
-			return false
-		}
-		if !self.CSig.ReachQuorum() {
-			log.Panic("Message verification failed.")
-			return false
-		}
-	}
-	return true
 }
 
 func (self *CommitMsg) Verify(bls *BLS) bool {
@@ -157,4 +140,21 @@ func (self *CommitMsg) Verify(bls *BLS) bool {
 		return false
 	}
 	return self.PSig.ReachQuorum()
+}
+
+func (self *CommitPrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+	b := self.Msg.BytesFromData(blockID, hash, cSig, pSig)
+	b[0] = MsgTypeCommitPrepare
+	return b
+}
+
+func (self *CommitPrepareMsg) Verify(bls *BLS, prevHash []byte) bool {
+	if !self.VerifyPSig(bls, self.hash) {
+		return false
+	}
+
+	if !self.CSig.Verify(bls, prevHash) {
+		return false
+	}
+	return self.CSig.ReachQuorum()
 }

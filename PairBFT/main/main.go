@@ -1,73 +1,60 @@
 package main
 
 import (
-	"log"
+	"github.com/sirupsen/logrus"
 	"github.com/Nik-U/pbc"
 	"time"
+	"os"
 )
 
 const (
-	address   = "127.0.0.1"
-	startPort = 2000
-
-	numPeers  = 10
-	numRounds = 100
-	bf        = 2
-	// increase epoch size if the program crashes or verification fails
-	epoch = time.Millisecond * 100
-
-	BlockData = "Gossip BLS UDP BFT pair method test data block *********"
+	address       = "127.0.0.1"
+	startPort     = 2000
+	numValidators = 10
+	numRounds     = 100
+	bf            = 2
+	epoch         = time.Millisecond * 100 // increase epoch size if the program crashes or verification fails
+	BlockData     = "Gossip BLS UDP BFT pair method test data block *********"
+	logLevel      = logrus.DebugLevel
 )
 
 var (
 	finished         = make(chan bool)
 	numSend, numRecv int64
 	pubKeys          []*pbc.Element
+	log              = logrus.New()
 )
 
-// Verifying individual public keys is necessary to defend against related key attacks
-func verifyPubKeys(peers []Validator) {
-	for i := 0; i < numPeers; i++ {
-		if !peers[i].VerifyPubKeySig() {
-			log.Panic("Public key signature verification failed for Peer: ", i)
-		}
-	}
-}
-
 func main() {
+	log.SetLevel(logLevel)
+	log.Out = os.Stdout
+
 	bls := &BLS{}
 	bls.Init()
 
-	peers := make([]Validator, numPeers)
-	for i := 0; i < numPeers; i++ {
-		peers[i].Init(uint32(i), bls)
+	validators := make([]Validator, numValidators)
+	for i := 0; i < numValidators; i++ {
+		validators[i].Init(uint32(i), bls)
 	}
-	verifyPubKeys(peers)
+	verifyPubKeys(validators)
 
-	pubKeys = make([]*pbc.Element, numPeers)
-	for i := 0; i < numPeers; i++ {
-		pubKeys[i] = peers[i].PubKey
+	pubKeys = make([]*pbc.Element, numValidators)
+	for i := 0; i < numValidators; i++ {
+		pubKeys[i] = validators[i].PubKey
 	}
 
 	finished = make(chan bool)
 
 	proposerID := getProposerID(0)
-	peers[proposerID].state = StatePrepared
-	peers[proposerID].blockID = 0
-	peers[proposerID].hash = getBlockHash(0)
-	peers[proposerID].InitAggSig()
+	validators[proposerID].proposeBlock(0)
 
-	for i := 0; i < numPeers; i++ {
-		go peers[i].Gossip()
+	for i := 0; i < numValidators; i++ {
+		go validators[i].Gossip()
 	}
-	for i := 0; i < numPeers; i++ {
+	for i := 0; i < numValidators; i++ {
 		<-finished
 	}
 
 	log.Print("Number of messages sent: ", numSend)
 	log.Print("Number of messages received: ", numRecv)
-
-	for i := 0; i < numPeers; i++ {
-		log.Print(peers[i].blockID, " ", peers[i].state, " ", peers[i].aggSig.counters)
-	}
 }

@@ -9,12 +9,13 @@ type (
 	BLS struct {
 		pairing *pbc.Pairing
 		g       *pbc.Element
+		params  *pbc.Params
 	}
 )
 
 func (self *BLS) Init() {
-	params := pbc.GenerateA(160, 512)
-	self.pairing = params.NewPairing()
+	self.params = pbc.GenerateA(160, 512)
+	self.pairing = self.params.NewPairing()
 	self.g = self.pairing.NewG2().Rand()
 }
 
