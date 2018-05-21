@@ -36,9 +36,15 @@ func (val *Validator) Send() {
 	if val.state == StateIdle {
 		return
 	}
-	for i := 0; i < bf; i++ {
 
-		// Randomly choose another peer
+	var (
+		data      []byte
+		dummyPMsg = &PrepareMsg{}
+		dummyCMsg = &CommitMsg{}
+	)
+
+	for i := 0; i < bf; i++ {
+		// Randomly choose another validator
 		rcpt := rand.Uint32() % (numValidators - 1)
 		if rcpt >= val.id {
 			rcpt ++
@@ -47,11 +53,6 @@ func (val *Validator) Send() {
 		atomic.AddInt64(&numSend, 1)
 
 		val.stateMutex.Lock()
-		var (
-			data      []byte
-			dummyPMsg = &PrepareMsg{}
-			dummyCMsg = &CommitMsg{}
-		)
 		switch val.state {
 		case StatePrepared:
 			if val.blockID == 0 {
@@ -217,11 +218,11 @@ func (val *Validator) prepareBlock(blockID uint32, hash []byte, aggSig *AggSig, 
 }
 
 func (val *Validator) commitBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
-	val.state = StateCommitted
-	if blockID != val.blockID {
+	if val.state == StateIdle || blockID != val.blockID {
 		val.blockID = blockID
 		val.updateHash(hash)
 	}
+	val.state = StateCommitted
 	val.prevAggSig = prevAggSig
 	val.InitAggSig()
 	if aggSig != nil {

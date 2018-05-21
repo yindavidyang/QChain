@@ -24,6 +24,15 @@ var (
 	validatorAddresses [numValidators]string
 )
 
+// Verifying individual public keys is necessary to defend against related key attacks
+func verifyPubKeys(vals []Validator) {
+	for i := 0; i < numValidators; i++ {
+		if !vals[i].VerifyPubKeySig() {
+			log.Panic("Public key signature verification failed for Peer: ", i)
+		}
+	}
+}
+
 func main() {
 	log.SetLevel(logLevel)
 	log.Out = os.Stdout

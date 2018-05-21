@@ -96,6 +96,12 @@ func (val *Validator) handleCommit(msg *CommitMsg) {
 		// Todo: send sync request to the message sender, to retrieve the aggregate signature
 	}
 
+	if val.checkHashMismatch(&msg.Msg) {
+		log.Panic("Hash mismatch: ", msg)
+		// Todo: slash all validators contained in the message
+		return
+	}
+
 	if val.state != StateIdle && msg.blockID == val.blockID {
 		msg.pPairer = val.pPairer
 		msg.cPairer = val.cPairer
@@ -105,12 +111,6 @@ func (val *Validator) handleCommit(msg *CommitMsg) {
 	if !msg.Verify(val.bls) {
 		val.logMessageVerificationFailure(&msg.Msg)
 		log.Panic("Message verification failed.", msg)
-		return
-	}
-
-	if val.checkHashMismatch(&msg.Msg) {
-		log.Panic("Hash mismatch: ", msg)
-		// Todo: slash all validators contained in the message
 		return
 	}
 

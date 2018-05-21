@@ -10,15 +10,6 @@ const (
 	CommitNounce = "Commit Nounce"
 )
 
-// Verifying individual public keys is necessary to defend against related key attacks
-func verifyPubKeys(vals []Validator) {
-	for i := 0; i < numValidators; i++ {
-		if !vals[i].VerifyPubKeySig() {
-			log.Panic("Public key signature verification failed for Peer: ", i)
-		}
-	}
-}
-
 func getProposerID(blockID uint32) uint32 {
 	return blockID % numValidators
 }
