@@ -12,38 +12,42 @@ type (
 	}
 )
 
-func (self *AggSig) Init(bls *BLS) {
-	self.counters = make([]uint32, numValidators)
-	self.sig = bls.pairing.NewG1()
+func (sig *AggSig) Init(bls *BLS) {
+	sig.counters = make([]uint32, numValidators)
+	sig.sig = bls.pairing.NewG1()
 }
 
-func (self *AggSig) Len() int {
-	return 4*numValidators + self.sig.BytesLen()
+func (sig *AggSig) Len() int {
+	return 4*numValidators + sig.sig.BytesLen()
 }
 
-func (self *AggSig) Bytes() []byte {
-	bytes := make([]byte, self.Len())
+func (sig *AggSig) Bytes() []byte {
+	bytes := make([]byte, sig.Len())
+	j := 0
 	for i := 0; i < numValidators; i++ {
-		binary.LittleEndian.PutUint32(bytes[i*4:i*4+4], self.counters[i])
+		binary.LittleEndian.PutUint32(bytes[j:j+lenCounter], sig.counters[i])
+		j += lenCounter
 	}
-	copy(bytes[numValidators*4:], self.sig.Bytes())
+	copy(bytes[j:], sig.sig.Bytes())
 	return bytes
 }
 
-func (self *AggSig) SetBytes(bytes []byte) {
+func (sig *AggSig) SetBytes(bytes []byte) {
+	j := 0
 	for i := 0; i < numValidators; i++ {
-		self.counters[i] = binary.LittleEndian.Uint32(bytes[i*4 : i*4+4])
+		sig.counters[i] = binary.LittleEndian.Uint32(bytes[j : j+lenCounter])
+		j += lenCounter
 	}
-	self.sig.SetBytes(bytes[numValidators*4:])
+	sig.sig.SetBytes(bytes[j:])
 }
 
-func (self *AggSig) Verify(bls *BLS, h []byte) bool {
+func (sig *AggSig) computeAggKey(bls *BLS) *pbc.Element {
 	vPubKey := bls.pairing.NewG2()
 	tempKey := bls.pairing.NewG2()
 	tempNum := bls.pairing.NewZr()
 	for i := 0; i < numValidators; i++ {
-		if (self.counters[i] != 0) {
-			tempNum.SetInt32(int32(self.counters[i]))
+		if sig.counters[i] != 0 {
+			tempNum.SetInt32(int32(sig.counters[i]))
 			tempKey.PowZn(pubKeys[i], tempNum)
 			if i == 0 {
 				vPubKey.Set(tempKey)
@@ -52,29 +56,38 @@ func (self *AggSig) Verify(bls *BLS, h []byte) bool {
 			}
 		}
 	}
-
-	return bls.VerifyHash(h, self.sig, vPubKey)
+	return vPubKey
 }
 
-func (self *AggSig) Copy() *AggSig {
+func (sig *AggSig) Verify(bls *BLS, hash []byte) bool {
+	vPubKey := sig.computeAggKey(bls)
+	return bls.VerifyHash(hash, sig.sig, vPubKey)
+}
+
+func (sig *AggSig) VerifyPreprocessed(bls *BLS, hash *pbc.Pairer) bool {
+	vPubKey := sig.computeAggKey(bls)
+	return bls.VerifyPreprocessed(hash, sig.sig, vPubKey)
+}
+
+func (sig *AggSig) Copy() *AggSig {
 	ret := AggSig{}
-	ret.sig = self.sig.NewFieldElement().Set(self.sig)
+	ret.sig = sig.sig.NewFieldElement().Set(sig.sig)
 	ret.counters = make([]uint32, numValidators)
 	for i := 0; i < numValidators; i++ {
-		ret.counters[i] = self.counters[i]
+		ret.counters[i] = sig.counters[i]
 	}
 	return &ret
 }
 
-func (self *AggSig) Aggregate(aggSig *AggSig) {
+func (sig *AggSig) Aggregate(otherSig *AggSig) {
 	isSuperSet := true
 	isSubSet := true
 
 	for i := 0; i < numValidators; i++ {
-		if self.counters[i] == 0 && aggSig.counters[i] != 0 {
+		if sig.counters[i] == 0 && otherSig.counters[i] != 0 {
 			isSuperSet = false
 		}
-		if aggSig.counters[i] == 0 && self.counters[i] != 0 {
+		if otherSig.counters[i] == 0 && sig.counters[i] != 0 {
 			isSubSet = false
 		}
 	}
@@ -84,30 +97,30 @@ func (self *AggSig) Aggregate(aggSig *AggSig) {
 	}
 
 	if isSubSet {
-		self.sig.Set(aggSig.sig)
-		copy(self.counters, aggSig.counters)
+		sig.sig.Set(otherSig.sig)
+		copy(sig.counters, otherSig.counters)
 		return
 	}
 
-	self.sig.ThenMul(aggSig.sig)
+	sig.sig.ThenMul(otherSig.sig)
 	for i := 0; i < numValidators; i++ {
-		self.counters[i] += aggSig.counters[i]
+		sig.counters[i] += otherSig.counters[i]
 	}
 }
 
-func (self *AggSig) AggregateOne(id uint32, sig *pbc.Element) {
-	if self.counters[id] != 0 {
+func (sig *AggSig) AggregateOne(id uint32, otherSig *pbc.Element) {
+	if sig.counters[id] != 0 {
 		return
 	}
 
-	self.sig.ThenMul(sig)
-	self.counters[id] = 1
+	sig.sig.ThenMul(otherSig)
+	sig.counters[id] = 1
 }
 
-func (self *AggSig) ReachQuorum() bool {
+func (sig *AggSig) ReachQuorum() bool {
 	c := 0
 	for i := 0; i < numValidators; i++ {
-		if self.counters[i] > 0 {
+		if sig.counters[i] > 0 {
 			c++
 		}
 	}

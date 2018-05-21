@@ -26,43 +26,47 @@ type (
 		PubKey, privKey    *pbc.Element
 		stateMutex         sync.Mutex
 		log                *logrus.Logger
+
+		pPairer, cPairer, prevCPairer *pbc.Pairer
+		cHash, prevCHash              []byte
 	}
 )
 
-func (self *Validator) Send() {
-	if self.state == StateIdle {
+func (val *Validator) Send() {
+	if val.state == StateIdle {
 		return
 	}
 	for i := 0; i < bf; i++ {
 
 		// Randomly choose another peer
 		rcpt := rand.Uint32() % (numValidators - 1)
-		if rcpt >= self.id {
+		if rcpt >= val.id {
 			rcpt ++
 		}
 
 		atomic.AddInt64(&numSend, 1)
-		self.stateMutex.Lock()
-		var (
-			data []byte
-		)
-		switch self.state {
-		case StatePrepared:
-			pMsg := &PrepareMsg{}
-			if self.blockID == 0 {
-				data = pMsg.BytesFromData(self.blockID, self.hash, self.aggSig, self.aggSig)
-			} else {
-				data = pMsg.BytesFromData(self.blockID, self.hash, self.prevAggSig, self.aggSig)
-			}
-			self.log.Debug("Prepare->", strconv.Itoa(int(rcpt)), "@", self.blockID, ":", self.aggSig.counters)
-		case StateCommitted, StateFinal:
-			cMsg := &CommitMsg{}
-			data = cMsg.BytesFromData(self.blockID, self.hash, self.aggSig, self.prevAggSig)
-			self.log.Debug("Commit->", strconv.Itoa(int(rcpt)), "@", self.blockID, ":", self.aggSig.counters)
-		}
-		self.stateMutex.Unlock()
 
-		conn, err := net.Dial("udp", address+":"+strconv.Itoa(int(startPort+rcpt)))
+		val.stateMutex.Lock()
+		var (
+			data      []byte
+			dummyPMsg = &PrepareMsg{}
+			dummyCMsg = &CommitMsg{}
+		)
+		switch val.state {
+		case StatePrepared:
+			if val.blockID == 0 {
+				data = dummyPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
+			} else {
+				data = dummyPMsg.BytesFromData(val.blockID, val.hash, val.prevAggSig, val.aggSig)
+			}
+			val.log.Debug("Prepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
+		case StateCommitted, StateFinal:
+			data = dummyCMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.prevAggSig)
+			val.log.Debug("Commit->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
+		}
+		val.stateMutex.Unlock()
+
+		conn, err := net.Dial("udp", validatorAddresses[rcpt])
 		if err != nil {
 			log.Panic("Error connecting to server: ", err)
 		}
@@ -71,8 +75,8 @@ func (self *Validator) Send() {
 	}
 }
 
-func (self *Validator) Listen() {
-	pc, err := net.ListenPacket("udp", address+":"+strconv.Itoa(int(startPort+self.id)))
+func (val *Validator) Listen() {
+	pc, err := net.ListenPacket("udp", validatorAddresses[val.id])
 	if err != nil {
 		log.Panic("Error listening to address: ", err)
 	}
@@ -89,37 +93,37 @@ func (self *Validator) Listen() {
 		switch buffer[0] {
 		case MsgTypePrepare:
 			pMsg := &PrepareMsg{}
-			pMsg.Init(self.bls)
+			pMsg.Init(val.bls)
 			pMsg.SetBytes(buffer[:n])
-			self.handlePrepare(pMsg)
+			val.handlePrepare(pMsg)
 		case MsgTypeCommit:
 			cMsg := &CommitMsg{}
-			cMsg.Init(self.bls)
+			cMsg.Init(val.bls)
 			cMsg.SetBytes(buffer[:n])
-			self.handleCommit(cMsg)
+			val.handleCommit(cMsg)
 		case MsgTypeCommitPrepare:
 			cpMsg := &CommitPrepareMsg{}
-			cpMsg.Init(self.bls)
+			cpMsg.Init(val.bls)
 			cpMsg.SetBytes(buffer[:n])
-			self.handleCommitPrepare(cpMsg)
+			val.handleCommitPrepare(cpMsg)
 		}
 	}
 }
 
-func (self *Validator) Gossip() {
-	go self.Listen()
+func (val *Validator) Gossip() {
+	go val.Listen()
 
 	for i := 0; i < numRounds; i++ {
-		go self.Send()
+		go val.Send()
 		time.Sleep(epoch)
 	}
 
 	finished <- true
 }
 
-func (self *Validator) Init(id uint32, bls *BLS) {
-	self.log = logrus.New()
-	self.log.SetLevel(logLevel)
+func (val *Validator) Init(id uint32, bls *BLS) {
+	val.log = logrus.New()
+	val.log.SetLevel(logLevel)
 	fileName, _ := filepath.Abs("log/validator" + strconv.Itoa(int(id)) + ".log")
 
 	if _, err := os.Stat(fileName); err == nil {
@@ -128,92 +132,116 @@ func (self *Validator) Init(id uint32, bls *BLS) {
 
 	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY, 0666)
 	if err == nil {
-		self.log.Out = file
+		val.log.Out = file
 	} else {
-		self.log.Info("Failed to log to file, using default stdout")
+		val.log.Info("Failed to log to file, using default stdout")
 	}
 
-	self.bls = bls
+	val.bls = bls
 
-	self.state = StateIdle
-	self.id = id
-	self.hash = make([]byte, sha256.Size)
-	self.blockID = 0
+	val.state = StateIdle
+	val.id = id
+	val.hash = make([]byte, sha256.Size)
+	val.blockID = 0
 
-	self.privKey, self.PubKey = bls.GenKey()
-	self.log.Print("BLS params: ", bls.params)
-	self.log.Print("BLS g: ", bls.g)
-	self.log.Print("Public key: ", self.PubKey)
-	self.log.Debug("Private key: ", self.privKey)
+	val.privKey, val.PubKey = bls.GenKey()
+	val.log.Print("BLS params: ", bls.params)
+	val.log.Print("BLS g: ", bls.g)
+	val.log.Print("Public key: ", val.PubKey)
+	val.log.Debug("Private key: ", val.privKey)
 
-	self.PubKeySig = self.Sign(self.PubKey.Bytes())
+	val.PubKeySig = val.Sign(val.PubKey.Bytes())
 }
 
-func (self *Validator) InitAggSig() {
-	self.aggSig = &AggSig{}
-	self.aggSig.Init(self.bls)
-	self.aggSig.counters[self.id] = 1
-	if self.state == StateCommitted {
-		self.aggSig.sig.Set(self.SignCommittedHash())
+func (val *Validator) InitAggSig() {
+	val.aggSig = &AggSig{}
+	val.aggSig.Init(val.bls)
+	val.aggSig.counters[val.id] = 1
+	if val.state == StateCommitted {
+		val.aggSig.sig.Set(val.SignCommittedHash())
 	} else {
-		self.aggSig.sig.Set(self.SignHash())
+		val.aggSig.sig.Set(val.SignHash())
 	}
 }
 
-func (self *Validator) Sign(data []byte) *pbc.Element {
-	return self.bls.SignBytes(data, self.privKey)
+func (val *Validator) Sign(data []byte) *pbc.Element {
+	return val.bls.SignBytes(data, val.privKey)
 }
 
-func (self *Validator) SignHash() *pbc.Element {
-	return self.bls.SignHash(self.hash, self.privKey)
+func (val *Validator) SignHash() *pbc.Element {
+	return val.bls.SignHash(val.hash, val.privKey)
 }
 
-func (self *Validator) SignCommittedHash() *pbc.Element {
-	text := string(self.hash) + CommitNounce
-	return self.bls.SignString(text, self.privKey)
+func (val *Validator) SignCommittedHash() *pbc.Element {
+	h := getCommitedHash(val.hash)
+	return val.bls.SignHash(h, val.privKey)
 }
 
-func (self *Validator) Verify(data []byte, sig *pbc.Element) bool {
-	return self.bls.VerifyBytes(data, sig, self.PubKey)
+func (val *Validator) Verify(data []byte, sig *pbc.Element) bool {
+	return val.bls.VerifyBytes(data, sig, val.PubKey)
 }
 
-func (self *Validator) VerifyPubKeySig() bool {
-	return self.Verify(self.PubKey.Bytes(), self.PubKeySig)
+func (val *Validator) VerifyPubKeySig() bool {
+	return val.Verify(val.PubKey.Bytes(), val.PubKeySig)
 }
 
-func (self *Validator) finalizeBlock() {
-	self.state = StateFinal
-	self.log.Print("Finalized@", self.blockID, ":", self.aggSig.counters)
-	// Todo: verify the block. Slash the proposer if verification fails.
+func (val *Validator) updateHash(hash []byte) {
+	val.prevHash = val.hash
+	val.prevCHash = val.cHash
+	val.prevCPairer = val.cPairer
+
+	val.hash = hash
+	val.cHash = getCommitedHash(val.hash)
+	val.pPairer = val.bls.PreprocessHash(val.hash)
+	val.cPairer = val.bls.PreprocessHash(val.cHash)
 }
 
-func (self *Validator) proposeBlock(blockID uint32) {
-	self.state = StatePrepared
-	self.blockID = blockID
-	self.prevHash = self.hash
-	self.hash = getBlockHash(self.blockID)
-	self.prevAggSig = self.aggSig
-	self.InitAggSig()
-	self.log.Print("Propose@", self.blockID, "#", self.hash)
+func (val *Validator) proposeBlock(blockID uint32) {
+	val.state = StatePrepared
+	val.blockID = blockID
+	h := getBlockHash(val.blockID)
+	val.updateHash(h)
+	val.prevAggSig = val.aggSig
+	val.InitAggSig()
+	val.log.Print("Propose@", val.blockID, "#", val.hash)
 }
 
-func (self *Validator) prepareBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
-	self.state = StatePrepared
-	self.prevHash = self.hash
-	self.hash = hash
-	self.blockID = blockID
-	self.InitAggSig()
-	self.aggSig.Aggregate(aggSig)
-	self.prevAggSig = prevAggSig
-	self.log.Print("Prepared@", self.blockID, ":", self.aggSig.counters)
+func (val *Validator) prepareBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+	val.state = StatePrepared
+	val.blockID = blockID
+	val.updateHash(hash)
+	val.prevAggSig = prevAggSig
+	val.InitAggSig()
+	val.aggSig.Aggregate(aggSig)
+	val.log.Print("Prepared@", val.blockID, ":", val.aggSig.counters)
 }
 
-func (self *Validator) logMessageVerificationFailure(msg *Msg) {
-	self.log.Print("Message verification failed.")
-	self.log.Print("@", msg.blockID)
-	self.log.Print("#", msg.hash)
-	self.log.Print("Self#", self.hash)
-	self.log.Print("Self prev#", self.prevHash)
-	self.log.Print("PSig:", msg.PSig.counters, msg.PSig.sig)
-	self.log.Print("CSig:", msg.CSig.counters, msg.CSig.sig)
+func (val *Validator) commitBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+	val.state = StateCommitted
+	if blockID != val.blockID {
+		val.blockID = blockID
+		val.updateHash(hash)
+	}
+	val.prevAggSig = prevAggSig
+	val.InitAggSig()
+	if aggSig != nil {
+		val.aggSig.Aggregate(aggSig)
+	}
+	val.log.Print("Committed@", val.blockID, ":", val.prevAggSig.counters)
+}
+
+func (val *Validator) finalizeBlock() {
+	val.state = StateFinal
+	val.log.Print("Finalized@", val.blockID, ":", val.aggSig.counters)
+	// Todo: add block to local blockchain. Slash the proposer if that fails.
+}
+
+func (val *Validator) logMessageVerificationFailure(msg *Msg) {
+	val.log.Print("Message verification failed.")
+	val.log.Print("@", msg.blockID)
+	val.log.Print("#", msg.hash)
+	val.log.Print("Self#", val.hash)
+	val.log.Print("Self prev#", val.prevHash)
+	val.log.Print("PSig:", msg.PSig.counters, "(", msg.PSig.sig, ")")
+	val.log.Print("CSig:", msg.CSig.counters, "(", msg.CSig.sig, ")")
 }

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
+	"github.com/Nik-U/pbc"
 )
 
 type (
@@ -10,6 +10,8 @@ type (
 		blockID    uint32
 		hash       []byte
 		PSig, CSig *AggSig
+		
+		pPairer, cPairer *pbc.Pairer
 	}
 
 	/*
@@ -52,21 +54,23 @@ type (
 	}
 )
 
-func (self *Msg) Init(bls *BLS) {
-	self.hash = make([]byte, LenHash)
-	self.CSig = &AggSig{}
-	self.CSig.Init(bls)
-	self.PSig = &AggSig{}
-	self.PSig.Init(bls)
+func (msg *Msg) Init(bls *BLS) {
+	msg.hash = make([]byte, LenHash)
+	msg.CSig = &AggSig{}
+	msg.CSig.Init(bls)
+	msg.PSig = &AggSig{}
+	msg.PSig.Init(bls)
+	msg.cPairer = nil
+	msg.pPairer = nil
 }
 
-func (self *Msg) Len() int {
+func (msg *Msg) Len() int {
 	return LenMsgType + LenBlockID + LenHash + LenAggSig*2
 }
 
-func (self *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+func (msg *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	i := 0
-	b := make([]byte, self.Len())
+	b := make([]byte, msg.Len())
 	b[i] = MsgTypeUnknown
 	i += LenMsgType
 	binary.LittleEndian.PutUint32(b[i:], blockID)
@@ -79,82 +83,89 @@ func (self *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *
 	return b
 }
 
-func (self *Msg) SetBytes(b []byte) {
+func (msg *Msg) SetBytes(b []byte) {
 	i := LenMsgType
-	self.blockID = binary.LittleEndian.Uint32(b[i:])
+	msg.blockID = binary.LittleEndian.Uint32(b[i:])
 	i += LenBlockID
-	copy(self.hash, b[i:])
+	copy(msg.hash, b[i:])
 	i += LenHash
-	self.CSig.SetBytes(b[i:])
+	msg.CSig.SetBytes(b[i:])
 	i += LenAggSig
-	self.PSig.SetBytes(b[i:])
+	msg.PSig.SetBytes(b[i:])
 }
 
-func (self *Msg) VerifyPSig(bls *BLS, hash []byte) bool {
-	proposerID := getProposerID(self.blockID)
-	if self.PSig.counters[proposerID] == 0 {
+func (msg *Msg) VerifyPSig(bls *BLS) bool {
+	proposerID := getProposerID(msg.blockID)
+	if msg.PSig.counters[proposerID] == 0 {
 		// Todo: slash all validators contained in the message
 		return false
 	}
-	return self.PSig.Verify(bls, hash)
+	return msg.PSig.VerifyPreprocessed(bls, msg.pPairer)
 }
 
-func (self *Msg) VerifyCSig(bls *BLS, hash []byte) bool {
-	dataToSign := string(hash) + CommitNounce
-	h := sha256.Sum256([]byte(dataToSign))
-	return self.CSig.Verify(bls, h[:])
+func (msg *Msg) VerifyCSig(bls *BLS) bool {
+	return msg.CSig.VerifyPreprocessed(bls, msg.cPairer)
 }
 
-func (self *PrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
-	b := self.Msg.BytesFromData(blockID, hash, cSig, pSig)
+func (msg *Msg) Preprocess(bls *BLS) {
+	if msg.pPairer == nil {
+		msg.pPairer = bls.PreprocessHash(msg.hash)
+	}
+	if msg.cPairer == nil {
+		msg.cPairer = bls.PreprocessHash(getCommitedHash(msg.hash))
+	}
+}
+
+func (pMsg *PrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+	b := pMsg.Msg.BytesFromData(blockID, hash, cSig, pSig)
 	b[0] = MsgTypePrepare
 	return b
 }
 
-func (self *PrepareMsg) Verify(bls *BLS, prevHash []byte) bool {
-	if !self.VerifyPSig(bls, self.hash) {
+func (pMsg *PrepareMsg) Verify(bls *BLS) bool {
+	if !pMsg.VerifyPSig(bls) {
 		return false
 	}
-	if self.blockID > 0 {
-		if !self.VerifyCSig(bls, prevHash) {
+	if pMsg.blockID > 0 {
+		if !pMsg.VerifyCSig(bls) {
 			return false
 		}
-		if !self.CSig.ReachQuorum() {
+		if !pMsg.CSig.ReachQuorum() {
 			return false
 		}
 	}
 	return true
 }
 
-func (self *CommitMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
-	b := self.Msg.BytesFromData(blockID, hash, cSig, pSig)
+func (cMsg *CommitMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+	b := cMsg.Msg.BytesFromData(blockID, hash, cSig, pSig)
 	b[0] = MsgTypeCommit
 	return b
 }
 
-func (self *CommitMsg) Verify(bls *BLS) bool {
-	if !self.VerifyPSig(bls, self.hash) {
+func (cMsg *CommitMsg) Verify(bls *BLS) bool {
+	if !cMsg.VerifyPSig(bls) {
 		return false
 	}
-	if !self.VerifyCSig(bls, self.hash) {
+	if !cMsg.VerifyCSig(bls) {
 		return false
 	}
-	return self.PSig.ReachQuorum()
+	return cMsg.PSig.ReachQuorum()
 }
 
-func (self *CommitPrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
-	b := self.Msg.BytesFromData(blockID, hash, cSig, pSig)
+func (cpMsg *CommitPrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+	b := cpMsg.Msg.BytesFromData(blockID, hash, cSig, pSig)
 	b[0] = MsgTypeCommitPrepare
 	return b
 }
 
-func (self *CommitPrepareMsg) Verify(bls *BLS, prevHash []byte) bool {
-	if !self.VerifyPSig(bls, self.hash) {
+func (cpMsg *CommitPrepareMsg) Verify(bls *BLS, prevHash []byte) bool {
+	if !cpMsg.VerifyPSig(bls) {
 		return false
 	}
 
-	if !self.CSig.Verify(bls, prevHash) {
+	if !cpMsg.CSig.Verify(bls, prevHash) {
 		return false
 	}
-	return self.CSig.ReachQuorum()
+	return cpMsg.CSig.ReachQuorum()
 }

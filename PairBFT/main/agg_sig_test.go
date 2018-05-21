@@ -3,7 +3,6 @@ package main
 import (
 	"testing"
 	"github.com/Nik-U/pbc"
-	"github.com/dedis/onet/log"
 	"bytes"
 )
 

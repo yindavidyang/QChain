@@ -14,15 +14,14 @@ const (
 	numRounds     = 100
 	bf            = 2
 	epoch         = time.Millisecond * 100 // increase epoch size if the program crashes or verification fails
-	BlockData     = "Gossip BLS UDP BFT pair method test data block *********"
-	logLevel      = logrus.DebugLevel
 )
 
 var (
-	finished         = make(chan bool)
-	numSend, numRecv int64
-	pubKeys          []*pbc.Element
-	log              = logrus.New()
+	finished           = make(chan bool)
+	numSend, numRecv   int64
+	pubKeys            []*pbc.Element
+	log                = logrus.New()
+	validatorAddresses [numValidators]string
 )
 
 func main() {
@@ -31,6 +30,8 @@ func main() {
 
 	bls := &BLS{}
 	bls.Init()
+
+	genValidatorAddresses()
 
 	validators := make([]Validator, numValidators)
 	for i := 0; i < numValidators; i++ {

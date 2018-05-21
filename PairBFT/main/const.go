@@ -1,16 +1,16 @@
 package main
 
-import "crypto/sha256"
-
-const (
-	CommitNounce = "Commit Nounce"
+import (
+	"crypto/sha256"
+	"github.com/sirupsen/logrus"
 )
 
 const (
 	LenBlockID = 4
 	LenHash    = sha256.Size
-	LenSig     = 128
-	LenAggSig  = numValidators*4 + LenSig
+	LenSig     = 130 // setting this to 128 leads to occasional verification failures
+	lenCounter = 4
+	LenAggSig  = numValidators*lenCounter + LenSig
 	LenMsgType = 1
 )
 
@@ -32,4 +32,8 @@ const (
 
 const (
 	MaxPacketSize = 4096
+)
+
+const (
+	logLevel      = logrus.DebugLevel
 )
