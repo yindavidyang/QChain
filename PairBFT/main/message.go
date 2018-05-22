@@ -109,9 +109,12 @@ func (msg *Msg) VerifyCSig(bls *BLS) bool {
 
 func (msg *Msg) Preprocess(bls *BLS) {
 	if msg.pPairer == nil {
+		// Todo: commitprepare
 		msg.pPairer = bls.PreprocessHash(msg.hash)
 	}
 	if msg.cPairer == nil {
+		// Todo: check prepare
+		// Todo: check commitprepare
 		msg.cPairer = bls.PreprocessHash(getCommitedHash(msg.hash))
 	}
 }
@@ -159,13 +162,17 @@ func (cpMsg *CommitPrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *
 	return b
 }
 
-func (cpMsg *CommitPrepareMsg) Verify(bls *BLS, prevHash []byte) bool {
+func (cpMsg *CommitPrepareMsg) Verify(bls *BLS) bool {
 	if !cpMsg.VerifyPSig(bls) {
 		return false
 	}
-
-	if !cpMsg.CSig.Verify(bls, prevHash) {
-		return false
+	if cpMsg.blockID > 0 {
+		if !cpMsg.VerifyCSig(bls) {
+			return false
+		}
+		if !cpMsg.CSig.ReachQuorum() {
+			return false
+		}
 	}
-	return cpMsg.CSig.ReachQuorum()
+	return true
 }

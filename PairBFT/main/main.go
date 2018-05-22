@@ -8,12 +8,10 @@ import (
 )
 
 const (
-	address       = "127.0.0.1"
-	startPort     = 2000
-	numValidators = 10
-	numRounds     = 100
-	bf            = 2
-	epoch         = time.Millisecond * 100 // increase epoch size if the program crashes or verification fails
+	numValidators = 4
+	numEpochs     = 100
+	bf            = 1
+	epoch         = time.Millisecond * 50 // increase epoch size if the program crashes or verification fails
 )
 
 var (
@@ -21,7 +19,7 @@ var (
 	numSend, numRecv   int64
 	pubKeys            []*pbc.Element
 	log                = logrus.New()
-	validatorAddresses [numValidators]string
+	validatorAddresses []string
 )
 
 // Verifying individual public keys is necessary to defend against related key attacks
@@ -40,7 +38,7 @@ func main() {
 	bls := &BLS{}
 	bls.Init()
 
-	genValidatorAddresses()
+	validatorAddresses = genValidatorAddresses()
 
 	validators := make([]Validator, numValidators)
 	for i := 0; i < numValidators; i++ {
@@ -56,7 +54,7 @@ func main() {
 	finished = make(chan bool)
 
 	proposerID := getProposerID(0)
-	validators[proposerID].proposeBlock(0)
+	validators[proposerID].commitProposeBlock(0)
 
 	for i := 0; i < numValidators; i++ {
 		go validators[i].Gossip()

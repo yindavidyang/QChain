@@ -8,14 +8,10 @@ import (
 
 const (
 	numValidators = 10
-	address       = "127.0.0.1"
-	startPort     = 2000
-	dataToSign    = "Gossip BLS UDP BFT test data"
 )
 
 var (
 	pubKeys            []*pbc.Element
-	validatorAddresses [numValidators]string
 	log                = logrus.New()
 )
 

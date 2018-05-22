@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 )
 
 func (val *Validator) checkHashMismatch(msg *Msg) bool {
@@ -38,14 +37,19 @@ func (val *Validator) handlePrepare(msg *PrepareMsg) {
 	}
 
 	if val.state != StateIdle {
+		// If the validator is not idle, msg.cPairer is always given a value
+		// if the validator is idle, then the message must be about block 0 (otherwise not implemented).
+		// For block 0, we don't check CSig, so we don't need cPairer anyway.
 		if msg.blockID == val.blockID {
 			msg.pPairer = val.pPairer
-			msg.cPairer = val.prevCPairer
-		} else { // msg.blockID = val.blockID+1
+			msg.cPairer = val.prevPairer
+		} else { // msg.blockID = val.blockID+1, otherwise not implemented
 			msg.cPairer = val.cPairer
 		}
 	}
-	msg.Preprocess(val.bls)
+	if msg.pPairer == nil {
+		msg.pPairer = val.bls.PreprocessHash(msg.hash)
+	}
 
 	if !msg.Verify(val.bls) {
 		val.logMessageVerificationFailure(&msg.Msg)
@@ -131,13 +135,17 @@ func (val *Validator) handleCommit(msg *CommitMsg) {
 }
 
 func (val *Validator) handleCommitPrepare(msg *CommitPrepareMsg) {
-	if val.blockID > msg.blockID || (val.blockID == msg.blockID && val.state == StateFinalPrepared) {
-		return
-	}
+	val.stateMutex.Lock()
+	defer val.stateMutex.Unlock()
 
-	if val.checkHashMismatch(&msg.Msg) {
-		log.Panic("Hash mismatch: ", msg)
-		// Todo: slash all validators contained in the message
+	msgObsolete := false
+	if val.blockID > msg.blockID {
+		msgObsolete = true
+	}
+	if val.blockID == msg.blockID && val.state == StateFinalPrepared {
+		msgObsolete = true
+	}
+	if msgObsolete {
 		return
 	}
 
@@ -146,53 +154,43 @@ func (val *Validator) handleCommitPrepare(msg *CommitPrepareMsg) {
 		// Todo: send sync request to the message sender
 	}
 
-	prevHash := val.prevHash
-	if msg.blockID > val.blockID { // msg.blockID = val.blockID+1
-		prevHash = val.hash
-	}
-	if !msg.Verify(val.bls, prevHash) {
-		log.Panic("Message verification failed.", msg)
+	if val.checkHashMismatch(&msg.Msg) {
+		log.Panic("Hash mismatch: ", msg)
+		// Todo: slash all validators contained in the message
 		return
 	}
 
-	val.stateMutex.Lock()
-	defer val.stateMutex.Unlock()
+	if val.state != StateIdle {
+		if msg.blockID == val.blockID {
+			msg.pPairer = val.pPairer
+			msg.cPairer = val.prevPairer
+		} else { // msg.blockID = val.blockID+1
+			msg.cPairer = val.pPairer
+		}
+	}
+	msg.pPairer = val.bls.PreprocessHash(msg.hash)
 
-	if msg.blockID > val.blockID && val.state != StateFinal {
-		val.finalizeBlock()
+	if !msg.Verify(val.bls) {
+		val.logMessageVerificationFailure(&msg.Msg)
+		log.Panic("Message verification failed.")
+		return
+	}
+
+	if msg.blockID > val.blockID && val.state != StateFinalPrepared {
+		val.aggSig = msg.CSig
+		val.finalizePrevBlock()
 	}
 
 	if val.state == StateIdle || msg.blockID > val.blockID {
-		val.state = StateCommitted
-		val.prevHash = val.hash
-		val.hash = msg.hash
-		val.blockID = msg.blockID
-		val.InitAggSig()
-		val.aggSig.Aggregate(msg.CSig)
-		val.prevAggSig = msg.PSig
-	} else if val.state == StatePrepared {
-		val.state = StateCommitted
-		val.InitAggSig()
-		val.aggSig.Aggregate(msg.CSig)
-		val.prevAggSig = msg.PSig
-	} else { // StateCommit
-		val.aggSig.Aggregate(msg.CSig)
+		val.commitPrepareBlock(msg.blockID, msg.hash, msg.PSig, msg.CSig)
+	} else { // StatePrepared
+		val.aggSig.Aggregate(msg.PSig)
 	}
 
 	if val.aggSig.ReachQuorum() {
-		val.finalizeBlock()
-		val.state = StateFinalPrepared
+		val.finalizePrevBlock()
 		if getProposerID(val.blockID+1) == val.id {
-			val.state = StateCommittedPrepared
-			val.blockID ++
-			val.prevHash = val.hash
-			dataToSign := make([]byte, LenHash*2)
-			copy(dataToSign, val.hash)
-			copy(dataToSign[LenHash:], getBlockHash(val.blockID))
-			h := sha256.Sum256(dataToSign)
-			val.hash = h[:]
-			val.prevAggSig = val.aggSig
-			val.InitAggSig()
+			val.commitProposeBlock(val.blockID + 1)
 		}
 	}
 }

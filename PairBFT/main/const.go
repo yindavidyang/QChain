@@ -26,7 +26,7 @@ const (
 	StatePrepared
 	StateCommitted
 	StateFinal
-	StateCommittedPrepared
+	StateCommitPrepared
 	StateFinalPrepared
 )
 
@@ -36,4 +36,11 @@ const (
 
 const (
 	logLevel      = logrus.DebugLevel
+)
+
+const (
+	CommitNounce = "Commit Nounce"
+	PrepareNounce = "Prepare Nounce"
+	CommitPrepareNounce = "CommitPrepare Nounce"
+	PubKeyNounce = "Public Key Nounce"
 )

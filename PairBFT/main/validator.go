@@ -16,19 +16,17 @@ import (
 
 type (
 	Validator struct {
-		bls                *BLS
-		id                 uint32
-		blockID            uint32
-		state              int
-		hash, prevHash     []byte
-		aggSig, prevAggSig *AggSig
-		PubKeySig          *pbc.Element
-		PubKey, privKey    *pbc.Element
-		stateMutex         sync.Mutex
-		log                *logrus.Logger
-
-		pPairer, cPairer, prevCPairer *pbc.Pairer
-		cHash, prevCHash              []byte
+		bls                          *BLS
+		id                           uint32
+		blockID                      uint32
+		state                        int
+		hash                         []byte
+		aggSig, prevAggSig           *AggSig
+		PubKeySig                    *pbc.Element
+		PubKey, privKey              *pbc.Element
+		stateMutex                   sync.Mutex
+		log                          *logrus.Logger
+		pPairer, cPairer, prevPairer *pbc.Pairer
 	}
 )
 
@@ -41,6 +39,7 @@ func (val *Validator) Send() {
 		data      []byte
 		dummyPMsg = &PrepareMsg{}
 		dummyCMsg = &CommitMsg{}
+		dummyCPMsg = &CommitPrepareMsg{}
 	)
 
 	for i := 0; i < bf; i++ {
@@ -64,6 +63,13 @@ func (val *Validator) Send() {
 		case StateCommitted, StateFinal:
 			data = dummyCMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.prevAggSig)
 			val.log.Debug("Commit->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
+		case StateCommitPrepared, StateFinalPrepared:
+			if val.blockID == 0 {
+				data = dummyCPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
+			} else {
+				data = dummyCPMsg.BytesFromData(val.blockID, val.hash, val.prevAggSig, val.aggSig)
+			}
+			val.log.Debug("CommitPrepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 		}
 		val.stateMutex.Unlock()
 
@@ -114,7 +120,7 @@ func (val *Validator) Listen() {
 func (val *Validator) Gossip() {
 	go val.Listen()
 
-	for i := 0; i < numRounds; i++ {
+	for i := 0; i < numEpochs; i++ {
 		go val.Send()
 		time.Sleep(epoch)
 	}
@@ -187,14 +193,15 @@ func (val *Validator) VerifyPubKeySig() bool {
 }
 
 func (val *Validator) updateHash(hash []byte) {
-	val.prevHash = val.hash
-	val.prevCHash = val.cHash
-	val.prevCPairer = val.cPairer
-
 	val.hash = hash
-	val.cHash = getCommitedHash(val.hash)
 	val.pPairer = val.bls.PreprocessHash(val.hash)
-	val.cPairer = val.bls.PreprocessHash(val.cHash)
+	if val.state == StateCommitPrepared {
+		val.prevPairer = val.pPairer
+	} else {
+		val.prevPairer = val.cPairer
+		cHash := getCommitedHash(val.hash)
+		val.cPairer = val.bls.PreprocessHash(cHash)
+	}
 }
 
 func (val *Validator) proposeBlock(blockID uint32) {
@@ -237,12 +244,40 @@ func (val *Validator) finalizeBlock() {
 	// Todo: add block to local blockchain. Slash the proposer if that fails.
 }
 
+func (val *Validator) commitProposeBlock(blockID uint32) {
+	val.state = StateCommitPrepared
+	val.blockID = blockID
+	h := getPairedHash(val.blockID)
+	val.updateHash(h)
+	val.prevAggSig = val.aggSig
+	val.InitAggSig()
+	val.log.Print("CommitPropose@", val.blockID, "#", val.hash)
+}
+
+func (val *Validator) commitPrepareBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+	val.state = StateCommitPrepared
+	val.blockID = blockID
+	val.updateHash(hash)
+	val.prevAggSig = prevAggSig
+	val.InitAggSig()
+	val.aggSig.Aggregate(aggSig)
+	val.log.Print("CommitPrepared@", val.blockID, ":", val.aggSig.counters)
+}
+
+func (val *Validator) finalizePrevBlock() {
+	val.state = StateFinalPrepared
+	if val.blockID == 0 {
+		return
+	}
+	val.log.Print("Finalized@", val.blockID-1, ":", val.aggSig.counters)
+	// Todo: add block to local blockchain. Slash the proposer if that fails.
+}
+
 func (val *Validator) logMessageVerificationFailure(msg *Msg) {
 	val.log.Print("Message verification failed.")
 	val.log.Print("@", msg.blockID)
 	val.log.Print("#", msg.hash)
 	val.log.Print("Self#", val.hash)
-	val.log.Print("Self prev#", val.prevHash)
 	val.log.Print("PSig:", msg.PSig.counters, "(", msg.PSig.sig, ")")
 	val.log.Print("CSig:", msg.CSig.counters, "(", msg.CSig.sig, ")")
 }
