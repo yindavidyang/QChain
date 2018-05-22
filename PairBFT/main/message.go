@@ -20,7 +20,7 @@ type (
 	- hash is the hash of the current block
 	- PSig is an AggSig of hash
 	- PSig must contain the proposer of the current block
-	- CSig is an Aggsig of (hash of the previous block | CommitNounce)
+	- CSig is an Aggsig of (hash of the previous block | NounceCommit)
 	- CSig much reach quorum
 	*/
 	PrepareMsg struct {
@@ -33,7 +33,7 @@ type (
 	- hash is the hash of the current block
 	- PSig is an AggSig of hash
 	- PSig must contain the proposer of the current block
-	- CSig is an Aggsig of (hash | CommitNounce)
+	- CSig is an Aggsig of (hash | NounceCommit)
 	- PSig much reach quorum
 	*/
 	CommitMsg struct {
@@ -54,32 +54,37 @@ type (
 	}
 )
 
-func (msg *Msg) Init(bls *BLS) {
+func (msg *Msg) Init(bls *BLS, numVals int) {
 	msg.hash = make([]byte, LenHash)
 	msg.CSig = &AggSig{}
-	msg.CSig.Init(bls)
+	msg.CSig.Init(bls, numVals)
 	msg.PSig = &AggSig{}
-	msg.PSig.Init(bls)
+	msg.PSig.Init(bls, numVals)
 	msg.cPairer = nil
 	msg.pPairer = nil
 }
 
-func (msg *Msg) Len() int {
-	return LenMsgType + LenBlockID + LenHash + LenAggSig*2
-}
-
 func (msg *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+	cBytes := cSig.Bytes()
+	pBytes := pSig.Bytes()
+	cLen := len(cBytes)
+	pLen := len(pBytes)
+
 	i := 0
-	b := make([]byte, msg.Len())
+	b := make([]byte, LenMsgType + LenBlockID + LenHash + cLen + pLen + 2)
 	b[i] = MsgTypeUnknown
 	i += LenMsgType
 	binary.LittleEndian.PutUint32(b[i:], blockID)
 	i += LenBlockID
 	copy(b[i:], hash)
 	i += LenHash
-	copy(b[i:], cSig.Bytes())
-	i += LenAggSig
-	copy(b[i:], pSig.Bytes())
+	b[i] = byte(cLen)
+	i++
+	copy(b[i:], cBytes)
+	i += cLen
+	b[i] = byte(pLen)
+	i++
+	copy(b[i:], pBytes)
 	return b
 }
 
@@ -89,13 +94,18 @@ func (msg *Msg) SetBytes(b []byte) {
 	i += LenBlockID
 	copy(msg.hash, b[i:])
 	i += LenHash
-	msg.CSig.SetBytes(b[i:])
-	i += LenAggSig
-	msg.PSig.SetBytes(b[i:])
+	cLen := int(b[i])
+	i++
+	msg.CSig.SetBytes(b[i:i+cLen])
+	i += cLen
+	pLen := int(b[i])
+	i++
+	msg.PSig.SetBytes(b[i:i+pLen])
 }
 
 func (msg *Msg) VerifyPSig(bls *BLS, pubKeys []*pbc.Element) bool {
-	proposerID := getProposerID(msg.blockID)
+	numVals := len(pubKeys)
+	proposerID := getProposerID(msg.blockID, numVals)
 	if msg.PSig.counters[proposerID] == 0 {
 		// Todo: slash all validators contained in the message
 		return false
@@ -115,7 +125,7 @@ func (msg *Msg) Preprocess(bls *BLS) {
 	if msg.cPairer == nil {
 		// Todo: check prepare
 		// Todo: check commitprepare
-		msg.cPairer = bls.PreprocessHash(getCommitedHash(msg.hash))
+		msg.cPairer = bls.PreprocessHash(getNouncedHash(msg.hash, NounceCommit))
 	}
 }
 

@@ -3,16 +3,17 @@ package main
 import (
 	"testing"
 	"bytes"
-	"github.com/sirupsen/logrus"
 	"math/rand"
+	"log"
 )
 
 const (
-	numValidators = 10
+	numVals   = 10
+	numEpochs = 100
 )
 
 var (
-	log = logrus.New()
+	finished = make(chan bool)
 )
 
 func TestAggSigSerialization(t *testing.T) {
@@ -29,20 +30,16 @@ func TestAggSigSerialization(t *testing.T) {
 		blockID := uint32(rep)
 		aggSig := &AggSig{}
 		aggSig.Init(bls)
-		for i := 0; i < numValidators; i ++ {
+		for i := 0; i < numVals; i ++ {
 			aggSig.counters[i] = rand.Uint32()
 		}
 		hash := getBlockHash(blockID)
-		hash = getCommitedHash(hash)
+		hash = getNouncedHash(hash, NounceCommit)
 		aggSig.sig = bls.SignHash(hash, privKey)
 
 		pairer := bls.PreprocessHash(hash)
 		if !bls.VerifyPreprocessed(pairer, aggSig.sig, pubKey) {
 			t.Error("Verification failed.")
-		}
-
-		if aggSig.Len() > lenCounter*numValidators+LenSig {
-			t.Error("AggSig exceeds specified length.")
 		}
 
 		b := aggSig.Bytes()
@@ -56,7 +53,7 @@ func TestAggSigSerialization(t *testing.T) {
 			t.Error("b and b2 contain different contents.")
 		}
 
-		for i := 0; i < numValidators; i++ {
+		for i := 0; i < numVals; i++ {
 			if aggSig.counters[i] != aggSig2.counters[i] {
 				t.Error("Incorrect counter")
 			}

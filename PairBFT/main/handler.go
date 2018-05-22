@@ -4,6 +4,27 @@ import (
 	"bytes"
 )
 
+func (val *Validator) handleMsgData(data []byte) {
+	numVals := len(val.valAddrSet)
+	switch data[0] {
+	case MsgTypePrepare:
+		pMsg := &PrepareMsg{}
+		pMsg.Init(val.bls, numVals)
+		pMsg.SetBytes(data)
+		val.handlePrepare(pMsg)
+	case MsgTypeCommit:
+		cMsg := &CommitMsg{}
+		cMsg.Init(val.bls, numVals)
+		cMsg.SetBytes(data)
+		val.handleCommit(cMsg)
+	case MsgTypeCommitPrepare:
+		cpMsg := &CommitPrepareMsg{}
+		cpMsg.Init(val.bls, numVals)
+		cpMsg.SetBytes(data)
+		val.handleCommitPrepare(cpMsg)
+	}
+}
+
 func (val *Validator) checkHashMismatch(msg *Msg) bool {
 	return val.state != StateIdle && val.blockID == msg.blockID && bytes.Compare(val.hash, msg.hash) != 0
 }
@@ -128,7 +149,8 @@ func (val *Validator) handleCommit(msg *CommitMsg) {
 
 	if val.aggSig.ReachQuorum() {
 		val.finalizeBlock()
-		if getProposerID(val.blockID+1) == val.id {
+		numVals := len(val.valAddrSet)
+		if getProposerID(val.blockID+1, numVals) == val.id {
 			val.proposeBlock(val.blockID + 1)
 		}
 	}
@@ -189,7 +211,8 @@ func (val *Validator) handleCommitPrepare(msg *CommitPrepareMsg) {
 
 	if val.aggSig.ReachQuorum() {
 		val.finalizePrevBlock()
-		if getProposerID(val.blockID+1) == val.id {
+		numVals := len(val.valAddrSet)
+		if getProposerID(val.blockID+1, numVals) == val.id {
 			val.commitProposeBlock(val.blockID + 1)
 		}
 	}

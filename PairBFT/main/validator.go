@@ -2,7 +2,6 @@ package main
 
 import (
 	"time"
-	"math/rand"
 	"github.com/Nik-U/pbc"
 	"net"
 	"strconv"
@@ -31,56 +30,6 @@ type (
 	}
 )
 
-func (val *Validator) Send() {
-	if val.state == StateIdle {
-		return
-	}
-
-	var (
-		data       []byte
-		dummyPMsg  = &PrepareMsg{}
-		dummyCMsg  = &CommitMsg{}
-		dummyCPMsg = &CommitPrepareMsg{}
-	)
-
-	for i := 0; i < branchFactor; i++ {
-		// Randomly choose another validator
-		rcpt := rand.Uint32() % (numVals - 1)
-		if rcpt >= val.id {
-			rcpt ++
-		}
-
-		val.stateMutex.Lock()
-		switch val.state {
-		case StatePrepared:
-			if val.blockID == 0 {
-				data = dummyPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
-			} else {
-				data = dummyPMsg.BytesFromData(val.blockID, val.hash, val.prevAggSig, val.aggSig)
-			}
-			val.log.Debug("Prepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
-		case StateCommitted, StateFinal:
-			data = dummyCMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.prevAggSig)
-			val.log.Debug("Commit->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
-		case StateCommitPrepared, StateFinalPrepared:
-			if val.blockID == 0 {
-				data = dummyCPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
-			} else {
-				data = dummyCPMsg.BytesFromData(val.blockID, val.hash, val.prevAggSig, val.aggSig)
-			}
-			val.log.Debug("CommitPrepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
-		}
-		val.stateMutex.Unlock()
-
-		conn, err := net.Dial("udp", val.valAddrSet[rcpt])
-		if err != nil {
-			val.log.Panic("Error connecting to server: ", err)
-		}
-		conn.Write(data)
-		conn.Close()
-	}
-}
-
 func (val *Validator) Listen() {
 	pc, err := net.ListenPacket("udp", val.valAddrSet[val.id])
 	if err != nil {
@@ -88,34 +37,18 @@ func (val *Validator) Listen() {
 	}
 	defer pc.Close()
 
+	buffer := make([]byte, MaxPacketSize)
+
 	for {
-		buffer := make([]byte, MaxPacketSize)
 		n, _, err := pc.ReadFrom(buffer)
 		if err != nil {
 			val.log.Panic("Error reading from client", err)
 		}
-
-		switch buffer[0] {
-		case MsgTypePrepare:
-			pMsg := &PrepareMsg{}
-			pMsg.Init(val.bls)
-			pMsg.SetBytes(buffer[:n])
-			val.handlePrepare(pMsg)
-		case MsgTypeCommit:
-			cMsg := &CommitMsg{}
-			cMsg.Init(val.bls)
-			cMsg.SetBytes(buffer[:n])
-			val.handleCommit(cMsg)
-		case MsgTypeCommitPrepare:
-			cpMsg := &CommitPrepareMsg{}
-			cpMsg.Init(val.bls)
-			cpMsg.SetBytes(buffer[:n])
-			val.handleCommitPrepare(cpMsg)
-		}
+		val.handleMsgData(buffer[:n])
 	}
 }
 
-func (val *Validator) Gossip() {
+func (val *Validator) Start() {
 	go val.Listen()
 
 	for i := 0; i < numEpochs; i++ {
@@ -155,46 +88,33 @@ func (val *Validator) Init(id uint32, bls *BLS) {
 	val.log.Print("Public key: ", val.PubKey)
 	val.log.Debug("Private key: ", val.privKey)
 
-	val.PubKeySig = val.Sign(val.PubKey.Bytes())
+	h := getNouncedHash(val.PubKey.Bytes(), NouncePubKey)
+	val.PubKeySig = val.bls.SignHash(h, val.privKey)
 }
 
 func (val *Validator) InitAggSig() {
+	numVals := len(val.valAddrSet)
 	val.aggSig = &AggSig{}
-	val.aggSig.Init(val.bls)
+	val.aggSig.Init(val.bls, numVals)
 	val.aggSig.counters[val.id] = 1
+	var h []byte
 	if val.state == StateCommitted {
-		val.aggSig.sig.Set(val.SignCommittedHash())
+		h = getNouncedHash(val.hash, NounceCommit)
 	} else {
-		val.aggSig.sig.Set(val.SignHash())
+		h = val.hash
 	}
-}
+	sig := val.bls.SignHash(h, val.privKey)
+	val.aggSig.sig.Set(sig)
 
-func (val *Validator) Sign(data []byte) *pbc.Element {
-	return val.bls.SignBytes(data, val.privKey)
-}
-
-func (val *Validator) SignHash() *pbc.Element {
-	return val.bls.SignHash(val.hash, val.privKey)
-}
-
-func (val *Validator) SignCommittedHash() *pbc.Element {
-	h := getCommitedHash(val.hash)
-	return val.bls.SignHash(h, val.privKey)
-}
-
-func (val *Validator) Verify(data []byte, sig *pbc.Element) bool {
-	return val.bls.VerifyBytes(data, sig, val.PubKey)
-}
-
-func (val *Validator) VerifyPubKeySig() bool {
-	return val.Verify(val.PubKey.Bytes(), val.PubKeySig)
 }
 
 func (val *Validator) SetValSet(valAddrSet []string, valPubKeySet []*pbc.Element, valPubKeySig []*pbc.Element) {
 	val.valAddrSet = valAddrSet
 	val.valPubKeySet = valPubKeySet
+	numVals := len(val.valAddrSet)
 	for i := 0; i < numVals; i++ {
-		val.bls.VerifyBytes(valPubKeySet[i].Bytes(), valPubKeySig[i], valPubKeySet[i])
+		h := getNouncedHash(valPubKeySet[i].Bytes(), NouncePubKey)
+		val.bls.VerifyHash(h, valPubKeySig[i], valPubKeySet[i])
 	}
 }
 
@@ -205,7 +125,7 @@ func (val *Validator) updateHash(hash []byte) {
 		val.prevPairer = val.pPairer
 	} else {
 		val.prevPairer = val.cPairer
-		cHash := getCommitedHash(val.hash)
+		cHash := getNouncedHash(val.hash, NounceCommit)
 		val.cPairer = val.bls.PreprocessHash(cHash)
 	}
 }

@@ -15,9 +15,7 @@ const (
 const (
 	LenBlockID = 4
 	LenHash    = sha256.Size
-	LenSig     = 130 // setting this to 128 leads to occasional verification failures
 	lenCounter = 4
-	LenAggSig  = numVals*lenCounter + LenSig
 	LenMsgType = 1
 )
 
@@ -42,8 +40,8 @@ const (
 )
 
 const (
-	CommitNounce        = "Commit Nounce"
-	PrepareNounce       = "Prepare Nounce"
-	CommitPrepareNounce = "CommitPrepare Nounce"
-	PubKeyNounce        = "Public Key Nounce"
+	NounceCommit        = "Commit Nounce"
+	NouncePrepare       = "Prepare Nounce"
+	NounceCommitPrepare = "CommitPrepare Nounce"
+	NouncePubKey        = "Public Key Nounce"
 )

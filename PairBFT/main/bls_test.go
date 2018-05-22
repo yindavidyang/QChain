@@ -2,7 +2,6 @@ package main
 
 import (
 	"testing"
-	"log"
 )
 
 // Aggregate signature: Alice and Bob sign the same text
@@ -24,8 +23,6 @@ func TestBLSAggregate(t *testing.T) {
 
 	if ok := bls.Verify(hash, aggSig, aggKey); !ok {
 		t.Error("Aggregate signature check failed.")
-	} else {
-		log.Print("Aggregate signature verified correctly.")
 	}
 }
 
@@ -52,7 +49,5 @@ func TestBLSAggregate2(t *testing.T) {
 
 	if !aggPairHash.Equals(aggPairSig) {
 		t.Error("Aggregate signature check failed.")
-	} else {
-		log.Print("Aggregate signature verified correctly.")
 	}
 }

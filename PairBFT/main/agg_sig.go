@@ -12,16 +12,18 @@ type (
 	}
 )
 
-func (sig *AggSig) Init(bls *BLS) {
+func (sig *AggSig) Init(bls *BLS, numVals int) {
 	sig.counters = make([]uint32, numVals)
 	sig.sig = bls.pairing.NewG1()
 }
 
 func (sig *AggSig) Len() int {
+	numVals := len(sig.counters)
 	return 4*numVals + sig.sig.BytesLen()
 }
 
 func (sig *AggSig) Bytes() []byte {
+	numVals := len(sig.counters)
 	bytes := make([]byte, sig.Len())
 	j := 0
 	for i := 0; i < numVals; i++ {
@@ -33,6 +35,7 @@ func (sig *AggSig) Bytes() []byte {
 }
 
 func (sig *AggSig) SetBytes(bytes []byte) {
+	numVals := len(sig.counters)
 	j := 0
 	for i := 0; i < numVals; i++ {
 		sig.counters[i] = binary.LittleEndian.Uint32(bytes[j : j+lenCounter])
@@ -42,6 +45,7 @@ func (sig *AggSig) SetBytes(bytes []byte) {
 }
 
 func (sig *AggSig) computeAggKey(bls *BLS, pubKeys []*pbc.Element) *pbc.Element {
+	numVals := len(sig.counters)
 	vPubKey := bls.pairing.NewG2()
 	tempKey := bls.pairing.NewG2()
 	tempNum := bls.pairing.NewZr()
@@ -70,6 +74,7 @@ func (sig *AggSig) VerifyPreprocessed(bls *BLS, hash *pbc.Pairer, pubKeys []*pbc
 }
 
 func (sig *AggSig) Copy() *AggSig {
+	numVals := len(sig.counters)
 	ret := AggSig{}
 	ret.sig = sig.sig.NewFieldElement().Set(sig.sig)
 	ret.counters = make([]uint32, numVals)
@@ -80,9 +85,9 @@ func (sig *AggSig) Copy() *AggSig {
 }
 
 func (sig *AggSig) Aggregate(otherSig *AggSig) {
+	numVals := len(sig.counters)
 	isSuperSet := true
 	isSubSet := true
-
 	for i := 0; i < numVals; i++ {
 		if sig.counters[i] == 0 && otherSig.counters[i] != 0 {
 			isSuperSet = false
@@ -118,6 +123,7 @@ func (sig *AggSig) AggregateOne(id uint32, otherSig *pbc.Element) {
 }
 
 func (sig *AggSig) ReachQuorum() bool {
+	numVals := len(sig.counters)
 	c := 0
 	for i := 0; i < numVals; i++ {
 		if sig.counters[i] > 0 {

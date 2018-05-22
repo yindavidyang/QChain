@@ -6,7 +6,12 @@ import (
 )
 
 const (
-	numValidators = 10
+	numVals   = 10
+	numEpochs = 100
+)
+
+var (
+	finished = make(chan bool)
 )
 
 func TestCommitVerification(t *testing.T) {
@@ -23,8 +28,8 @@ func TestCommitVerification(t *testing.T) {
 		t.Fail()
 	}
 
-	pubKeys := make([]*pbc.Element, numValidators)
-	for i := 0; i < numValidators; i++ {
+	pubKeys := make([]*pbc.Element, numVals)
+	for i := 0; i < numVals; i++ {
 		pubKeys[i] = pairing.NewG2()
 	}
 
