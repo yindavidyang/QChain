@@ -2,7 +2,6 @@ package main
 
 import (
 	"testing"
-	"github.com/Nik-U/pbc"
 	"bytes"
 	"github.com/sirupsen/logrus"
 	"math/rand"
@@ -13,8 +12,7 @@ const (
 )
 
 var (
-	pubKeys            []*pbc.Element
-	log                = logrus.New()
+	log = logrus.New()
 )
 
 func TestAggSigSerialization(t *testing.T) {

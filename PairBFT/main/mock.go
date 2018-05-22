@@ -10,7 +10,7 @@ const (
 )
 
 func getProposerID(blockID uint32) uint32 {
-	return blockID % numValidators
+	return blockID % numVals
 }
 
 func getBlockHash(blockID uint32) []byte {
@@ -20,10 +20,10 @@ func getBlockHash(blockID uint32) []byte {
 }
 
 func genValidatorAddresses() []string {
-	ret := make([]string, numValidators)
+	ret := make([]string, numVals)
 	address := "127.0.0.1"
 	startPort := 2000
-	for i := 0; i < numValidators; i++ {
+	for i := 0; i < numVals; i++ {
 		ret[i] = address + ":" + strconv.Itoa(int(startPort+i))
 	}
 	return ret

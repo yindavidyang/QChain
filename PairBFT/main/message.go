@@ -94,17 +94,17 @@ func (msg *Msg) SetBytes(b []byte) {
 	msg.PSig.SetBytes(b[i:])
 }
 
-func (msg *Msg) VerifyPSig(bls *BLS) bool {
+func (msg *Msg) VerifyPSig(bls *BLS, pubKeys []*pbc.Element) bool {
 	proposerID := getProposerID(msg.blockID)
 	if msg.PSig.counters[proposerID] == 0 {
 		// Todo: slash all validators contained in the message
 		return false
 	}
-	return msg.PSig.VerifyPreprocessed(bls, msg.pPairer)
+	return msg.PSig.VerifyPreprocessed(bls, msg.pPairer, pubKeys)
 }
 
-func (msg *Msg) VerifyCSig(bls *BLS) bool {
-	return msg.CSig.VerifyPreprocessed(bls, msg.cPairer)
+func (msg *Msg) VerifyCSig(bls *BLS, pubKeys []*pbc.Element) bool {
+	return msg.CSig.VerifyPreprocessed(bls, msg.cPairer, pubKeys)
 }
 
 func (msg *Msg) Preprocess(bls *BLS) {
@@ -125,12 +125,12 @@ func (pMsg *PrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig,
 	return b
 }
 
-func (pMsg *PrepareMsg) Verify(bls *BLS) bool {
-	if !pMsg.VerifyPSig(bls) {
+func (pMsg *PrepareMsg) Verify(bls *BLS, pubKeys []*pbc.Element) bool {
+	if !pMsg.VerifyPSig(bls, pubKeys) {
 		return false
 	}
 	if pMsg.blockID > 0 {
-		if !pMsg.VerifyCSig(bls) {
+		if !pMsg.VerifyCSig(bls, pubKeys) {
 			return false
 		}
 		if !pMsg.CSig.ReachQuorum() {
@@ -146,11 +146,11 @@ func (cMsg *CommitMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, 
 	return b
 }
 
-func (cMsg *CommitMsg) Verify(bls *BLS) bool {
-	if !cMsg.VerifyPSig(bls) {
+func (cMsg *CommitMsg) Verify(bls *BLS, pubKeys []*pbc.Element) bool {
+	if !cMsg.VerifyPSig(bls, pubKeys) {
 		return false
 	}
-	if !cMsg.VerifyCSig(bls) {
+	if !cMsg.VerifyCSig(bls, pubKeys) {
 		return false
 	}
 	return cMsg.PSig.ReachQuorum()
@@ -162,12 +162,12 @@ func (cpMsg *CommitPrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *
 	return b
 }
 
-func (cpMsg *CommitPrepareMsg) Verify(bls *BLS) bool {
-	if !cpMsg.VerifyPSig(bls) {
+func (cpMsg *CommitPrepareMsg) Verify(bls *BLS, pubKeys []*pbc.Element) bool {
+	if !cpMsg.VerifyPSig(bls, pubKeys) {
 		return false
 	}
 	if cpMsg.blockID > 0 {
-		if !cpMsg.VerifyCSig(bls) {
+		if !cpMsg.VerifyCSig(bls, pubKeys) {
 			return false
 		}
 		if !cpMsg.CSig.ReachQuorum() {

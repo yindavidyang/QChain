@@ -3,6 +3,13 @@ package main
 import (
 	"crypto/sha256"
 	"github.com/sirupsen/logrus"
+	"time"
+)
+
+const (
+	logLevel     = logrus.DebugLevel
+	branchFactor = 2
+	epoch        = time.Millisecond * 50
 )
 
 const (
@@ -10,7 +17,7 @@ const (
 	LenHash    = sha256.Size
 	LenSig     = 130 // setting this to 128 leads to occasional verification failures
 	lenCounter = 4
-	LenAggSig  = numValidators*lenCounter + LenSig
+	LenAggSig  = numVals*lenCounter + LenSig
 	LenMsgType = 1
 )
 
@@ -22,7 +29,7 @@ const (
 )
 
 const (
-	StateIdle              = iota
+	StateIdle           = iota
 	StatePrepared
 	StateCommitted
 	StateFinal
@@ -35,12 +42,8 @@ const (
 )
 
 const (
-	logLevel      = logrus.DebugLevel
-)
-
-const (
-	CommitNounce = "Commit Nounce"
-	PrepareNounce = "Prepare Nounce"
+	CommitNounce        = "Commit Nounce"
+	PrepareNounce       = "Prepare Nounce"
 	CommitPrepareNounce = "CommitPrepare Nounce"
-	PubKeyNounce = "Public Key Nounce"
+	PubKeyNounce        = "Public Key Nounce"
 )

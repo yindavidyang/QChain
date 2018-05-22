@@ -26,12 +26,12 @@ func (val *Validator) handlePrepare(msg *PrepareMsg) {
 	}
 
 	if msg.blockID > val.blockID+1 || (val.state == StateIdle && msg.blockID > 0) {
-		log.Panic("Not implemented: ", msg.blockID, " ", val.blockID)
+		val.log.Panic("Not implemented: ", msg.blockID, " ", val.blockID)
 		// Todo: send sync request to the message sender
 	}
 
 	if val.checkHashMismatch(&msg.Msg) {
-		log.Panic("Hash mismatch: ", msg)
+		val.log.Panic("Hash mismatch: ", msg)
 		// Todo: slash all validators contained in the message
 		return
 	}
@@ -51,9 +51,9 @@ func (val *Validator) handlePrepare(msg *PrepareMsg) {
 		msg.pPairer = val.bls.PreprocessHash(msg.hash)
 	}
 
-	if !msg.Verify(val.bls) {
+	if !msg.Verify(val.bls, val.valPubKeySet) {
 		val.logMessageVerificationFailure(&msg.Msg)
-		log.Panic("Message verification failed.")
+		val.log.Panic("Message verification failed.")
 		return
 	}
 
@@ -91,17 +91,17 @@ func (val *Validator) handleCommit(msg *CommitMsg) {
 	}
 
 	if msg.blockID > val.blockID+1 || (val.state == StateIdle && msg.blockID > 0) {
-		log.Panic("Not implemented.")
+		val.log.Panic("Not implemented.")
 		// Todo: send sync request to the message sender
 	}
 
 	if msg.blockID > val.blockID && val.state != StateFinal {
-		log.Panic("Not implemented.")
+		val.log.Panic("Not implemented.")
 		// Todo: send sync request to the message sender, to retrieve the aggregate signature
 	}
 
 	if val.checkHashMismatch(&msg.Msg) {
-		log.Panic("Hash mismatch: ", msg)
+		val.log.Panic("Hash mismatch: ", msg)
 		// Todo: slash all validators contained in the message
 		return
 	}
@@ -112,9 +112,9 @@ func (val *Validator) handleCommit(msg *CommitMsg) {
 	}
 	msg.Preprocess(val.bls)
 
-	if !msg.Verify(val.bls) {
+	if !msg.Verify(val.bls, val.valPubKeySet) {
 		val.logMessageVerificationFailure(&msg.Msg)
-		log.Panic("Message verification failed.", msg)
+		val.log.Panic("Message verification failed.", msg)
 		return
 	}
 
@@ -150,12 +150,12 @@ func (val *Validator) handleCommitPrepare(msg *CommitPrepareMsg) {
 	}
 
 	if msg.blockID > val.blockID+1 || (val.state == StateIdle && msg.blockID > 0) {
-		log.Panic("Not implemented.")
+		val.log.Panic("Not implemented.")
 		// Todo: send sync request to the message sender
 	}
 
 	if val.checkHashMismatch(&msg.Msg) {
-		log.Panic("Hash mismatch: ", msg)
+		val.log.Panic("Hash mismatch: ", msg)
 		// Todo: slash all validators contained in the message
 		return
 	}
@@ -170,9 +170,9 @@ func (val *Validator) handleCommitPrepare(msg *CommitPrepareMsg) {
 	}
 	msg.pPairer = val.bls.PreprocessHash(msg.hash)
 
-	if !msg.Verify(val.bls) {
+	if !msg.Verify(val.bls, val.valPubKeySet) {
 		val.logMessageVerificationFailure(&msg.Msg)
-		log.Panic("Message verification failed.")
+		val.log.Panic("Message verification failed.")
 		return
 	}
 

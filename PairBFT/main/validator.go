@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sync/atomic"
 	"time"
 	"math/rand"
 	"github.com/Nik-U/pbc"
@@ -27,6 +26,8 @@ type (
 		stateMutex                   sync.Mutex
 		log                          *logrus.Logger
 		pPairer, cPairer, prevPairer *pbc.Pairer
+		valAddrSet                   []string
+		valPubKeySet                 []*pbc.Element
 	}
 )
 
@@ -36,20 +37,18 @@ func (val *Validator) Send() {
 	}
 
 	var (
-		data      []byte
-		dummyPMsg = &PrepareMsg{}
-		dummyCMsg = &CommitMsg{}
+		data       []byte
+		dummyPMsg  = &PrepareMsg{}
+		dummyCMsg  = &CommitMsg{}
 		dummyCPMsg = &CommitPrepareMsg{}
 	)
 
-	for i := 0; i < bf; i++ {
+	for i := 0; i < branchFactor; i++ {
 		// Randomly choose another validator
-		rcpt := rand.Uint32() % (numValidators - 1)
+		rcpt := rand.Uint32() % (numVals - 1)
 		if rcpt >= val.id {
 			rcpt ++
 		}
-
-		atomic.AddInt64(&numSend, 1)
 
 		val.stateMutex.Lock()
 		switch val.state {
@@ -73,9 +72,9 @@ func (val *Validator) Send() {
 		}
 		val.stateMutex.Unlock()
 
-		conn, err := net.Dial("udp", validatorAddresses[rcpt])
+		conn, err := net.Dial("udp", val.valAddrSet[rcpt])
 		if err != nil {
-			log.Panic("Error connecting to server: ", err)
+			val.log.Panic("Error connecting to server: ", err)
 		}
 		conn.Write(data)
 		conn.Close()
@@ -83,9 +82,9 @@ func (val *Validator) Send() {
 }
 
 func (val *Validator) Listen() {
-	pc, err := net.ListenPacket("udp", validatorAddresses[val.id])
+	pc, err := net.ListenPacket("udp", val.valAddrSet[val.id])
 	if err != nil {
-		log.Panic("Error listening to address: ", err)
+		val.log.Panic("Error listening to address: ", err)
 	}
 	defer pc.Close()
 
@@ -93,9 +92,8 @@ func (val *Validator) Listen() {
 		buffer := make([]byte, MaxPacketSize)
 		n, _, err := pc.ReadFrom(buffer)
 		if err != nil {
-			log.Panic("Error reading from client", err)
+			val.log.Panic("Error reading from client", err)
 		}
-		atomic.AddInt64(&numRecv, 1)
 
 		switch buffer[0] {
 		case MsgTypePrepare:
@@ -190,6 +188,14 @@ func (val *Validator) Verify(data []byte, sig *pbc.Element) bool {
 
 func (val *Validator) VerifyPubKeySig() bool {
 	return val.Verify(val.PubKey.Bytes(), val.PubKeySig)
+}
+
+func (val *Validator) SetValSet(valAddrSet []string, valPubKeySet []*pbc.Element, valPubKeySig []*pbc.Element) {
+	val.valAddrSet = valAddrSet
+	val.valPubKeySet = valPubKeySet
+	for i := 0; i < numVals; i++ {
+		val.bls.VerifyBytes(valPubKeySet[i].Bytes(), valPubKeySig[i], valPubKeySet[i])
+	}
 }
 
 func (val *Validator) updateHash(hash []byte) {

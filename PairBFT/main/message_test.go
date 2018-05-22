@@ -3,16 +3,10 @@ package main
 import (
 	"github.com/Nik-U/pbc"
 	"testing"
-	"github.com/sirupsen/logrus"
 )
 
 const (
 	numValidators = 10
-)
-
-var (
-	pubKeys            []*pbc.Element
-	log                = logrus.New()
 )
 
 func TestCommitVerification(t *testing.T) {
@@ -29,7 +23,7 @@ func TestCommitVerification(t *testing.T) {
 		t.Fail()
 	}
 
-	pubKeys = make([]*pbc.Element, numValidators)
+	pubKeys := make([]*pbc.Element, numValidators)
 	for i := 0; i < numValidators; i++ {
 		pubKeys[i] = pairing.NewG2()
 	}
@@ -65,7 +59,7 @@ func TestCommitVerification(t *testing.T) {
 	}
 
 	cMsg.Preprocess(bls)
-	ok = cMsg.Verify(bls)
+	ok = cMsg.Verify(bls, pubKeys)
 	if !ok {
 		t.Fail()
 	}
