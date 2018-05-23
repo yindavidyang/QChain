@@ -138,8 +138,8 @@ func (val *Validator) SetValSet(valAddrSet []string, valPubKeySet []*pbc.Element
 func (val *Validator) updateHash(hash []byte) {
 	val.hash = hash
 	if val.useCommitPrepare {
-		val.pPairer = val.bls.PreprocessHash(getNouncedHash(hash, NounceCommitPrepare))
 		val.prevPairer = val.pPairer
+		val.pPairer = val.bls.PreprocessHash(getNouncedHash(hash, NounceCommitPrepare))
 	} else {
 		val.pPairer = val.bls.PreprocessHash(getNouncedHash(hash, NouncePrepare))
 		val.prevPairer = val.cPairer

@@ -191,7 +191,9 @@ func (val *Validator) handleCommitPrepare(msg *CommitPrepareMsg) {
 			msg.cPairer = val.pPairer
 		}
 	}
-	msg.pPairer = val.bls.PreprocessHash(msg.hash)
+	if msg.pPairer == nil {
+		msg.pPairer = val.bls.PreprocessHash(getNouncedHash(msg.hash, NounceCommitPrepare))
+	}
 
 	if !msg.Verify(val.bls, val.valPubKeySet) {
 		val.logMessageVerificationFailure(&msg.Msg)
