@@ -10,7 +10,7 @@ type (
 		blockID    uint32
 		hash       []byte
 		PSig, CSig *AggSig
-		
+
 		pPairer, cPairer *pbc.Pairer
 	}
 
@@ -71,19 +71,15 @@ func (msg *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *A
 	pLen := len(pBytes)
 
 	i := 0
-	b := make([]byte, LenMsgType + LenBlockID + LenHash + cLen + pLen + 2)
+	b := make([]byte, LenMsgType+LenBlockID+LenHash+cLen+pLen+2)
 	b[i] = MsgTypeUnknown
 	i += LenMsgType
 	binary.LittleEndian.PutUint32(b[i:], blockID)
 	i += LenBlockID
 	copy(b[i:], hash)
 	i += LenHash
-	b[i] = byte(cLen)
-	i++
 	copy(b[i:], cBytes)
 	i += cLen
-	b[i] = byte(pLen)
-	i++
 	copy(b[i:], pBytes)
 	return b
 }
@@ -94,13 +90,9 @@ func (msg *Msg) SetBytes(b []byte) {
 	i += LenBlockID
 	copy(msg.hash, b[i:])
 	i += LenHash
-	cLen := int(b[i])
-	i++
-	msg.CSig.SetBytes(b[i:i+cLen])
+	cLen := msg.CSig.SetBytes(b[i:])
 	i += cLen
-	pLen := int(b[i])
-	i++
-	msg.PSig.SetBytes(b[i:i+pLen])
+	msg.PSig.SetBytes(b[i:])
 }
 
 func (msg *Msg) VerifyPSig(bls *BLS, pubKeys []*pbc.Element) bool {

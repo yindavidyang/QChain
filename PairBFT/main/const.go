@@ -3,13 +3,10 @@ package main
 import (
 	"crypto/sha256"
 	"github.com/sirupsen/logrus"
-	"time"
 )
 
 const (
 	logLevel     = logrus.DebugLevel
-	branchFactor = 2
-	epoch        = time.Millisecond * 50
 )
 
 const (

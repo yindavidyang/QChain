@@ -8,7 +8,6 @@ import (
 )
 
 const (
-	numVals   = 10
 	numEpochs = 100
 )
 
@@ -17,6 +16,8 @@ var (
 )
 
 func TestAggSigSerialization(t *testing.T) {
+	numVals := 10
+
 	bls := &BLS{}
 	bls.Init()
 
@@ -29,7 +30,7 @@ func TestAggSigSerialization(t *testing.T) {
 
 		blockID := uint32(rep)
 		aggSig := &AggSig{}
-		aggSig.Init(bls)
+		aggSig.Init(bls, numVals)
 		for i := 0; i < numVals; i ++ {
 			aggSig.counters[i] = rand.Uint32()
 		}
@@ -45,7 +46,7 @@ func TestAggSigSerialization(t *testing.T) {
 		b := aggSig.Bytes()
 
 		aggSig2 := &AggSig{}
-		aggSig2.Init(bls)
+		aggSig2.Init(bls, numVals)
 		aggSig2.SetBytes(b)
 		b2 := aggSig2.Bytes()
 
@@ -73,8 +74,10 @@ func TestAggSigCopy(t *testing.T) {
 	bls := &BLS{}
 	bls.Init()
 
+	numVals := 40
+
 	aggSig := &AggSig{}
-	aggSig.Init(bls)
+	aggSig.Init(bls, numVals)
 
 	aggSig2 := aggSig.Copy()
 	b := aggSig.Bytes()

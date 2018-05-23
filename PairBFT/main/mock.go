@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"crypto/sha256"
 	"github.com/Nik-U/pbc"
+	"time"
 )
 
 const (
@@ -50,7 +51,7 @@ func getPairedHash(blockID uint32) []byte{
 	return h[:]
 }
 
-func genValidators(numVals int) []Validator {
+func genValidators(numVals int, bf int, epochLen time.Duration) []Validator {
 	bls := &BLS{}
 	bls.Init()
 
@@ -58,7 +59,7 @@ func genValidators(numVals int) []Validator {
 
 	vals := make([]Validator, numVals)
 	for i := 0; i < numVals; i++ {
-		vals[i].Init(uint32(i), bls)
+		vals[i].Init(uint32(i), bls, bf, epochLen)
 	}
 
 	pubKeys := make([]*pbc.Element, numVals)

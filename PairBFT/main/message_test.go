@@ -3,10 +3,11 @@ package main
 import (
 	"github.com/Nik-U/pbc"
 	"testing"
+	"log"
+	"math/rand"
 )
 
 const (
-	numVals   = 10
 	numEpochs = 100
 )
 
@@ -15,6 +16,8 @@ var (
 )
 
 func TestCommitVerification(t *testing.T) {
+	numVals := 10
+
 	bls := &BLS{}
 
 	pairing, err := pbc.NewPairingFromString("type a\nq 2812117932765329014966910618758078119114162367827981932526142504820953187162353803419878645557396099833476413038568202891371934841117721600697306330038347\nh 1924129170256022817939893149324508642952067008643656577213083274524092256964484206555734291265588642054068\nr 1461501637330902918203607461463827683388751347711\nexp2 160\nexp1 86\nsign1 -1\nsign0 -1\n")
@@ -48,7 +51,7 @@ func TestCommitVerification(t *testing.T) {
 	cMsg.hash = []byte{193, 169, 142, 252, 239, 27, 190, 158, 115, 140, 49, 120, 22, 169, 205, 117, 84, 1, 178, 201, 199, 191, 72, 247, 35, 143, 34, 48, 226, 118, 103, 136}
 	cMsg.blockID = 5
 	cMsg.PSig = &AggSig{}
-	cMsg.PSig.Init(bls)
+	cMsg.PSig.Init(bls, numVals)
 	cMsg.PSig.counters = []uint32{2, 1, 0, 0, 0, 6, 1, 1, 1, 2}
 	_, ok = cMsg.PSig.sig.SetString("[836920771390103298704840403989506711126891105325030286868262453233445363241750719393917951118204128689867847852288901086920405152164245349792635102919338, 1353212726997774966097932169298982977886387465233035071584156358874193135743959129902361718642569235442489424378458968595387329674046487523378003229371452]", 10)
 	if !ok {
@@ -56,7 +59,7 @@ func TestCommitVerification(t *testing.T) {
 	}
 
 	cMsg.CSig = &AggSig{}
-	cMsg.CSig.Init(bls)
+	cMsg.CSig.Init(bls, numVals)
 	cMsg.CSig.counters = []uint32{0, 0, 0, 0, 1, 0, 1, 0, 0, 1}
 	_, ok = cMsg.CSig.sig.SetString("[370185111315020496045752294118200113280861073109881491536922489440221951697662816715471106646643213429011483802034462713866870630639458246719078096119087, 2421798655017249905464803845051037150312201013385508007857421972848668821449024822545271123126972739838161662770367247019923383734833467563449948686706091]", 10)
 	if !ok {
@@ -67,5 +70,63 @@ func TestCommitVerification(t *testing.T) {
 	ok = cMsg.Verify(bls, pubKeys)
 	if !ok {
 		t.Fail()
+	}
+}
+
+func TestMsgSerialization(t *testing.T) {
+	numVals := 40
+	bls := &BLS{}
+	bls.Init()
+
+	pubKeys := make([]*pbc.Element, numVals)
+	privKeys := make([]*pbc.Element, numVals)
+	for i := 0; i < numVals; i++ {
+		privKeys[i], pubKeys[i] = bls.GenKey()
+	}
+
+	for rep := 0; rep < 100; rep++ {
+		if rep% 10 == 0 {
+			log.Print(rep)
+		}
+		msg := &Msg{}
+		msg.Init(bls, numVals)
+		tempNum := bls.pairing.NewZr()
+
+		blockID := uint32(rep)
+		pSig := &AggSig{}
+		pSig.Init(bls, numVals)
+		hash := getBlockHash(blockID)
+
+		for i := 0; i < numVals; i ++ {
+			pSig.counters[i] = rand.Uint32()
+			tempNum.SetInt32(int32(pSig.counters[i]))
+			if i == 0 {
+				pSig.sig = bls.SignHash(hash, privKeys[i]).ThenPowZn(tempNum)
+			} else {
+				pSig.sig.ThenMul(bls.SignHash(hash, privKeys[i]).ThenPowZn(tempNum))
+			}
+		}
+		msg.PSig = pSig
+
+		cSig := &AggSig{}
+		cSig.Init(bls, numVals)
+		hash = getNouncedHash(hash, NounceCommit)
+		for i := 0; i < numVals; i ++ {
+			cSig.counters[i] = rand.Uint32()
+			tempNum.SetInt32(int32(cSig.counters[i]))
+			if i == 0 {
+				cSig.sig = bls.SignHash(hash, privKeys[i]).ThenPowZn(tempNum)
+			} else {
+				cSig.sig.ThenMul(bls.SignHash(hash, privKeys[i]).ThenPowZn(tempNum))
+			}
+		}
+		msg.CSig = cSig
+
+		b := msg.BytesFromData(msg.blockID, msg.hash, msg.CSig, msg.PSig)
+		msg.SetBytes(b)
+
+		msg.Preprocess(bls)
+		msg.VerifyCSig(bls, pubKeys)
+		msg.VerifyPSig(bls, pubKeys)
 	}
 }

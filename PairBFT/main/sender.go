@@ -52,7 +52,7 @@ func (val *Validator) Send() {
 		return
 	}
 
-	for i := 0; i < branchFactor; i++ {
+	for i := 0; i < val.branchFactor; i++ {
 		rcpt := val.chooseRcpt()
 		data := val.genMsgData(rcpt)
 		conn, err := net.Dial("udp", val.valAddrSet[rcpt])

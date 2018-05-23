@@ -34,14 +34,16 @@ func (sig *AggSig) Bytes() []byte {
 	return bytes
 }
 
-func (sig *AggSig) SetBytes(bytes []byte) {
+func (sig *AggSig) SetBytes(b []byte) int {
 	numVals := len(sig.counters)
 	j := 0
 	for i := 0; i < numVals; i++ {
-		sig.counters[i] = binary.LittleEndian.Uint32(bytes[j : j+lenCounter])
+		sig.counters[i] = binary.LittleEndian.Uint32(b[j : j+lenCounter])
 		j += lenCounter
 	}
-	sig.sig.SetBytes(bytes[j:])
+	sig.sig.SetBytes(b[j:])
+	j += sig.sig.BytesLen()
+	return j
 }
 
 func (sig *AggSig) computeAggKey(bls *BLS, pubKeys []*pbc.Element) *pbc.Element {

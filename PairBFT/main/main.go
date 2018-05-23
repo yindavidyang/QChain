@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 const (
 	numEpochs = 100
 )
@@ -9,9 +11,11 @@ var (
 )
 
 func main() {
-	numVals   := 10
+	numVals := 40
+	bf := 5
+	epoch := time.Millisecond * 500
 
-	vals := genValidators(numVals)
+	vals := genValidators(numVals, bf, epoch)
 
 	finished = make(chan bool)
 

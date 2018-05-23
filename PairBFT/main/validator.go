@@ -18,6 +18,8 @@ type (
 		id                           uint32
 		blockID                      uint32
 		state                        int
+		branchFactor                 int
+		epochLen                     time.Duration
 		hash                         []byte
 		aggSig, prevAggSig           *AggSig
 		PubKeySig                    *pbc.Element
@@ -53,13 +55,13 @@ func (val *Validator) Start() {
 
 	for i := 0; i < numEpochs; i++ {
 		go val.Send()
-		time.Sleep(epoch)
+		time.Sleep(val.epochLen)
 	}
 
 	finished <- true
 }
 
-func (val *Validator) Init(id uint32, bls *BLS) {
+func (val *Validator) Init(id uint32, bls *BLS, bf int, epochLen time.Duration) {
 	val.log = logrus.New()
 	val.log.SetLevel(logLevel)
 	fileName, _ := filepath.Abs("log/validator" + strconv.Itoa(int(id)) + ".log")
@@ -79,6 +81,8 @@ func (val *Validator) Init(id uint32, bls *BLS) {
 
 	val.state = StateIdle
 	val.id = id
+	val.branchFactor = bf
+	val.epochLen = epochLen
 	val.hash = make([]byte, sha256.Size)
 	val.blockID = 0
 
