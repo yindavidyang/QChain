@@ -1,18 +1,10 @@
-package main
+package PairBFT
 
 import (
 	"github.com/Nik-U/pbc"
 	"testing"
 	"log"
 	"math/rand"
-)
-
-const (
-	numEpochs = 100
-)
-
-var (
-	finished = make(chan bool)
 )
 
 func TestCommitVerification(t *testing.T) {

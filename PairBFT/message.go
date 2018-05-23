@@ -1,4 +1,4 @@
-package main
+package PairBFT
 
 import (
 	"encoding/binary"
@@ -109,14 +109,15 @@ func (msg *Msg) VerifyCSig(bls *BLS, pubKeys []*pbc.Element) bool {
 	return msg.CSig.VerifyPreprocessed(bls, msg.cPairer, pubKeys)
 }
 
-func (msg *Msg) Preprocess(bls *BLS) {
+func (msg *Msg) Preprocess(bls *BLS, useCommitPrepare bool) {
 	if msg.pPairer == nil {
-		// Todo: commitprepare
-		msg.pPairer = bls.PreprocessHash(msg.hash)
+		nounce := NouncePrepare
+		if useCommitPrepare {
+			nounce = NounceCommitPrepare
+		}
+		msg.pPairer = bls.PreprocessHash(getNouncedHash(msg.hash, nounce))
 	}
 	if msg.cPairer == nil {
-		// Todo: check prepare
-		// Todo: check commitprepare
 		msg.cPairer = bls.PreprocessHash(getNouncedHash(msg.hash, NounceCommit))
 	}
 }

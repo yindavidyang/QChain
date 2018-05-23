@@ -1,4 +1,4 @@
-package main
+package PairBFT
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 
 func (val *Validator) handleMsgData(data []byte) {
 	numVals := len(val.valAddrSet)
+
 	switch data[0] {
 	case MsgTypePrepare:
 		pMsg := &PrepareMsg{}
@@ -69,7 +70,7 @@ func (val *Validator) handlePrepare(msg *PrepareMsg) {
 		}
 	}
 	if msg.pPairer == nil {
-		msg.pPairer = val.bls.PreprocessHash(msg.hash)
+		msg.pPairer = val.bls.PreprocessHash(getNouncedHash(msg.hash, NouncePrepare))
 	}
 
 	if !msg.Verify(val.bls, val.valPubKeySet) {
@@ -131,7 +132,7 @@ func (val *Validator) handleCommit(msg *CommitMsg) {
 		msg.pPairer = val.pPairer
 		msg.cPairer = val.cPairer
 	}
-	msg.Preprocess(val.bls)
+	msg.Preprocess(val.bls, val.useCommitPrepare)
 
 	if !msg.Verify(val.bls, val.valPubKeySet) {
 		val.logMessageVerificationFailure(&msg.Msg)

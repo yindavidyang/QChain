@@ -1,4 +1,4 @@
-package main
+package PairBFT
 
 import (
 	"github.com/Nik-U/pbc"
@@ -19,7 +19,7 @@ func (sig *AggSig) Init(bls *BLS, numVals int) {
 
 func (sig *AggSig) Len() int {
 	numVals := len(sig.counters)
-	return 4*numVals + sig.sig.BytesLen()
+	return lenCounter*numVals + sig.sig.BytesLen()
 }
 
 func (sig *AggSig) Bytes() []byte {
@@ -27,7 +27,7 @@ func (sig *AggSig) Bytes() []byte {
 	bytes := make([]byte, sig.Len())
 	j := 0
 	for i := 0; i < numVals; i++ {
-		binary.LittleEndian.PutUint32(bytes[j:j+lenCounter], sig.counters[i])
+		binary.LittleEndian.PutUint32(bytes[j:], sig.counters[i])
 		j += lenCounter
 	}
 	copy(bytes[j:], sig.sig.Bytes())
@@ -38,7 +38,7 @@ func (sig *AggSig) SetBytes(b []byte) int {
 	numVals := len(sig.counters)
 	j := 0
 	for i := 0; i < numVals; i++ {
-		sig.counters[i] = binary.LittleEndian.Uint32(b[j : j+lenCounter])
+		sig.counters[i] = binary.LittleEndian.Uint32(b[j:])
 		j += lenCounter
 	}
 	sig.sig.SetBytes(b[j:])
@@ -73,17 +73,6 @@ func (sig *AggSig) Verify(bls *BLS, hash []byte, pubKeys []*pbc.Element) bool {
 func (sig *AggSig) VerifyPreprocessed(bls *BLS, hash *pbc.Pairer, pubKeys []*pbc.Element) bool {
 	vPubKey := sig.computeAggKey(bls, pubKeys)
 	return bls.VerifyPreprocessed(hash, sig.sig, vPubKey)
-}
-
-func (sig *AggSig) Copy() *AggSig {
-	numVals := len(sig.counters)
-	ret := AggSig{}
-	ret.sig = sig.sig.NewFieldElement().Set(sig.sig)
-	ret.counters = make([]uint32, numVals)
-	for i := 0; i < numVals; i++ {
-		ret.counters[i] = sig.counters[i]
-	}
-	return &ret
 }
 
 func (sig *AggSig) Aggregate(otherSig *AggSig) {

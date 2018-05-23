@@ -1,16 +1,8 @@
-package main
+package PairBFT
 
 import (
 	"testing"
 	"time"
-)
-
-const (
-	numEpochs = 100
-)
-
-var (
-	finished = make(chan bool)
 )
 
 func TestBFTHandlers(t *testing.T) {

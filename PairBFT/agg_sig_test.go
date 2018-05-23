@@ -1,18 +1,10 @@
-package main
+package PairBFT
 
 import (
 	"testing"
 	"bytes"
 	"math/rand"
 	"log"
-)
-
-const (
-	numEpochs = 100
-)
-
-var (
-	finished = make(chan bool)
 )
 
 func TestAggSigSerialization(t *testing.T) {
@@ -67,23 +59,5 @@ func TestAggSigSerialization(t *testing.T) {
 		if !bls.VerifyPreprocessed(pairer, aggSig2.sig, pubKey) {
 			t.Error("Verification failed.")
 		}
-	}
-}
-
-func TestAggSigCopy(t *testing.T) {
-	bls := &BLS{}
-	bls.Init()
-
-	numVals := 40
-
-	aggSig := &AggSig{}
-	aggSig.Init(bls, numVals)
-
-	aggSig2 := aggSig.Copy()
-	b := aggSig.Bytes()
-	b2 := aggSig2.Bytes()
-
-	if bytes.Compare(b, b2) != 0 {
-		t.Error("b and b2 contain different contents.")
 	}
 }

@@ -1,4 +1,4 @@
-package main
+package PairBFT
 
 import (
 	"time"
@@ -29,6 +29,10 @@ type (
 		pPairer, cPairer, prevPairer *pbc.Pairer
 		valAddrSet                   []string
 		valPubKeySet                 []*pbc.Element
+
+		useCommitPrepare bool
+		debugEpochLimit  int
+		debugTerminated  chan bool
 	}
 )
 
@@ -40,28 +44,36 @@ func (val *Validator) Listen() {
 	defer pc.Close()
 
 	buffer := make([]byte, MaxPacketSize)
-
-	for {
+	for stop := false; !stop; {
+		pc.SetDeadline(time.Now().Add(10 * val.epochLen))
 		n, _, err := pc.ReadFrom(buffer)
 		if err != nil {
-			val.log.Panic("Error reading from client", err)
+			if e, ok := err.(net.Error); !ok || !e.Timeout() {
+				val.log.Panic("Error reading from client", err)
+			}
+		} else {
+			val.handleMsgData(buffer[:n])
 		}
-		val.handleMsgData(buffer[:n])
+		select {
+		case stop = <-val.debugTerminated:
+		default:
+		}
 	}
 }
 
 func (val *Validator) Start() {
 	go val.Listen()
 
-	for i := 0; i < numEpochs; i++ {
+	for epoch := 0; val.debugEpochLimit != 0 && epoch < val.debugEpochLimit; epoch++ {
 		go val.Send()
 		time.Sleep(val.epochLen)
 	}
-
-	finished <- true
+	val.debugTerminated <- true
 }
 
 func (val *Validator) Init(id uint32, bls *BLS, bf int, epochLen time.Duration) {
+	val.debugTerminated = make(chan bool)
+
 	val.log = logrus.New()
 	val.log.SetLevel(logLevel)
 	fileName, _ := filepath.Abs("log/validator" + strconv.Itoa(int(id)) + ".log")
@@ -101,15 +113,16 @@ func (val *Validator) InitAggSig() {
 	val.aggSig = &AggSig{}
 	val.aggSig.Init(val.bls, numVals)
 	val.aggSig.counters[val.id] = 1
-	var h []byte
-	if val.state == StateCommitted {
-		h = getNouncedHash(val.hash, NounceCommit)
-	} else {
-		h = val.hash
-	}
-	sig := val.bls.SignHash(h, val.privKey)
-	val.aggSig.sig.Set(sig)
 
+	nounce := NouncePrepare
+	if val.useCommitPrepare {
+		nounce = NounceCommitPrepare
+	}
+	if val.state == StateCommitted {
+		nounce = NounceCommit
+	}
+	h := getNouncedHash(val.hash, nounce)
+	val.aggSig.sig = val.bls.SignHash(h, val.privKey)
 }
 
 func (val *Validator) SetValSet(valAddrSet []string, valPubKeySet []*pbc.Element, valPubKeySig []*pbc.Element) {
@@ -124,12 +137,13 @@ func (val *Validator) SetValSet(valAddrSet []string, valPubKeySet []*pbc.Element
 
 func (val *Validator) updateHash(hash []byte) {
 	val.hash = hash
-	val.pPairer = val.bls.PreprocessHash(val.hash)
-	if val.state == StateCommitPrepared {
+	if val.useCommitPrepare {
+		val.pPairer = val.bls.PreprocessHash(getNouncedHash(hash, NounceCommitPrepare))
 		val.prevPairer = val.pPairer
 	} else {
+		val.pPairer = val.bls.PreprocessHash(getNouncedHash(hash, NouncePrepare))
 		val.prevPairer = val.cPairer
-		cHash := getNouncedHash(val.hash, NounceCommit)
+		cHash := getNouncedHash(hash, NounceCommit)
 		val.cPairer = val.bls.PreprocessHash(cHash)
 	}
 }

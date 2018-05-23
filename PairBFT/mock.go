@@ -1,4 +1,4 @@
-package main
+package PairBFT
 
 import (
 	"strconv"
