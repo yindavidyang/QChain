@@ -10,7 +10,7 @@ const (
 )
 
 const (
-	LenBlockID = 4
+	LenBlockID = 8
 	LenHash    = sha256.Size
 	lenCounter = 4
 	LenMsgType = 1

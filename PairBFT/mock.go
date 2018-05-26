@@ -9,8 +9,8 @@ const (
 	BlockData    = "Start BLS UDP BFT pair method test data block *********"
 )
 
-func getProposerID(blockID uint32, numVals int) uint32 {
-	return blockID % uint32(numVals)
+func getProposerID(blockID uint64, numVals int) uint32 {
+	return uint32(blockID % uint64(numVals))
 }
 
 func genValidatorAddresses(numVals int) []string {
@@ -23,7 +23,7 @@ func genValidatorAddresses(numVals int) []string {
 	return ret
 }
 
-func getBlockHash(blockID uint32) []byte {
+func getBlockHash(blockID uint64) []byte {
 	dataToSign := BlockData + strconv.Itoa(int(blockID))
 	h := sha256.Sum256([]byte(dataToSign))
 	return h[:]
@@ -37,7 +37,7 @@ func getNoncedHash(hash []byte, nonce string) []byte {
 	return h[:]
 }
 
-func getPairedHash(blockID uint32) []byte{
+func getPairedHash(blockID uint64) []byte{
 	dataToSign := make([]byte, LenHash*2+len(NonceCommitPrepare))
 	i := 0
 	copy(dataToSign, getBlockHash(blockID))

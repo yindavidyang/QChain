@@ -7,7 +7,7 @@ import (
 
 type (
 	Msg struct {
-		blockID    uint32
+		blockID    uint64
 		hash       []byte
 		PSig, CSig *AggSig
 
@@ -64,7 +64,7 @@ func (msg *Msg) Init(bls *BLS, numVals int) {
 	msg.pPairer = nil
 }
 
-func (msg *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+func (msg *Msg) BytesFromData(blockID uint64, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	cBytes := cSig.Bytes()
 	pBytes := pSig.Bytes()
 	cLen := len(cBytes)
@@ -74,7 +74,7 @@ func (msg *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *A
 	b := make([]byte, LenMsgType+LenBlockID+LenHash+cLen+pLen+2)
 	b[i] = MsgTypeUnknown
 	i += LenMsgType
-	binary.LittleEndian.PutUint32(b[i:], blockID)
+	binary.LittleEndian.PutUint64(b[i:], blockID)
 	i += LenBlockID
 	copy(b[i:], hash)
 	i += LenHash
@@ -86,7 +86,7 @@ func (msg *Msg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *A
 
 func (msg *Msg) SetBytes(b []byte) {
 	i := LenMsgType
-	msg.blockID = binary.LittleEndian.Uint32(b[i:])
+	msg.blockID = binary.LittleEndian.Uint64(b[i:])
 	i += LenBlockID
 	copy(msg.hash, b[i:])
 	i += LenHash
@@ -122,7 +122,7 @@ func (msg *Msg) Preprocess(bls *BLS, useCommitPrepare bool) {
 	}
 }
 
-func (pMsg *PrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+func (pMsg *PrepareMsg) BytesFromData(blockID uint64, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	b := pMsg.Msg.BytesFromData(blockID, hash, cSig, pSig)
 	b[0] = MsgTypePrepare
 	return b
@@ -143,7 +143,7 @@ func (pMsg *PrepareMsg) Verify(bls *BLS, pubKeys []*pbc.Element) bool {
 	return true
 }
 
-func (cMsg *CommitMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+func (cMsg *CommitMsg) BytesFromData(blockID uint64, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	b := cMsg.Msg.BytesFromData(blockID, hash, cSig, pSig)
 	b[0] = MsgTypeCommit
 	return b
@@ -159,7 +159,7 @@ func (cMsg *CommitMsg) Verify(bls *BLS, pubKeys []*pbc.Element) bool {
 	return cMsg.PSig.ReachQuorum()
 }
 
-func (cpMsg *CommitPrepareMsg) BytesFromData(blockID uint32, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+func (cpMsg *CommitPrepareMsg) BytesFromData(blockID uint64, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	b := cpMsg.Msg.BytesFromData(blockID, hash, cSig, pSig)
 	b[0] = MsgTypeCommitPrepare
 	return b

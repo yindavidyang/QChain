@@ -3,7 +3,6 @@ package PairBFT
 import (
 	"testing"
 	"github.com/Nik-U/pbc"
-	"fmt"
 )
 
 // Aggregate signature: Alice and Bob sign the same text
@@ -54,7 +53,7 @@ func TestBLSAggregateAdvanced(t *testing.T) {
 	}
 }
 
-func Test1(t *testing.T) {
+func TestTemp1(t *testing.T) {
 	bls := &BLS{}
 	pairing, err := pbc.NewPairingFromString("type a\nq 14255759452639307747360153296102950097185643642557958736505085125768588700181548014943655760582420667819109497042378880810655425413635876266394044272557923\nh 9754186439827859727359616674335773951552816794888290482843940922454506422457865588951007462960529245126812\nr 1461501637330902918201208952637712259106134294527\nexp2 160\nexp1 91\nsign1 -1\nsign0 -1\n")
 	bls.pairing = pairing
@@ -75,11 +74,8 @@ func Test1(t *testing.T) {
 	if !ok {
 		t.Fail()
 	}
-	fmt.Println("here")
-	h := pairing.NewG1().SetFromHash(hash)
-	fmt.Println(bls.PairHash(h, pubKey))
 	ok = bls.VerifyHash(hash, sig, pubKey)
-	if !ok {
+	if ok {
 		t.Fail()
 	}
 }

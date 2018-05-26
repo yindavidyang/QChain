@@ -17,9 +17,6 @@ func (val *Validator) chooseRcpt() uint32 {
 }
 
 func (val *Validator) genMsgData(rcpt uint32) []byte {
-	val.stateMutex.Lock()
-	defer val.stateMutex.Unlock()
-
 	var (
 		data       []byte
 		dummyPMsg  = &PrepareMsg{}
@@ -27,9 +24,11 @@ func (val *Validator) genMsgData(rcpt uint32) []byte {
 		dummyCPMsg = &CommitPrepareMsg{}
 	)
 
+	val.stateMutex.Lock()
+	defer val.stateMutex.Unlock()
+
 	switch val.state {
 	case StatePrepared:
-		val.log.Debug("xPrepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 		if val.blockID == 0 {
 			data = dummyPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
 		} else {
@@ -37,11 +36,9 @@ func (val *Validator) genMsgData(rcpt uint32) []byte {
 		}
 		val.log.Debug("Prepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 	case StateCommitted, StateFinal:
-		val.log.Debug("xCommit->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 		data = dummyCMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.prevAggSig)
 		val.log.Debug("Commit->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 	case StateCommitPrepared, StateFinalPrepared:
-		val.log.Debug("xCommitPrepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 		if val.blockID == 0 {
 			data = dummyCPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
 		} else {
@@ -62,17 +59,11 @@ func (val *Validator) sendData(rcpt uint32, data []byte) {
 }
 
 func (val *Validator) Send() {
-	val.stateMutex.Lock()
-	state := val.state
-	val.stateMutex.Unlock()
-
-	if state == StateIdle {
-		return
-	}
-
 	for i := 0; i < val.branchFactor; i++ {
 		rcpt := val.chooseRcpt()
 		data := val.genMsgData(rcpt)
-		val.sendData(rcpt, data)
+		if data != nil {
+			val.sendData(rcpt, data)
+		}
 	}
 }

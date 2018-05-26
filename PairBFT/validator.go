@@ -16,7 +16,7 @@ type (
 	Validator struct {
 		bls                          *BLS
 		id                           uint32
-		blockID                      uint32
+		blockID                      uint64
 		state                        int
 		branchFactor                 int
 		epochLen                     time.Duration
@@ -150,7 +150,7 @@ func (val *Validator) updateHash(hash []byte) {
 	}
 }
 
-func (val *Validator) proposeBlock(blockID uint32) {
+func (val *Validator) proposeBlock(blockID uint64) {
 	val.state = StatePrepared
 	val.blockID = blockID
 	h := getBlockHash(val.blockID)
@@ -160,7 +160,7 @@ func (val *Validator) proposeBlock(blockID uint32) {
 	val.log.Print("Propose@", val.blockID, "#", val.hash)
 }
 
-func (val *Validator) prepareBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+func (val *Validator) prepareBlock(blockID uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
 	val.state = StatePrepared
 	val.blockID = blockID
 	val.updateHash(hash)
@@ -170,7 +170,7 @@ func (val *Validator) prepareBlock(blockID uint32, hash []byte, aggSig *AggSig, 
 	val.log.Print("Prepared@", val.blockID, ":", val.aggSig.counters)
 }
 
-func (val *Validator) commitBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+func (val *Validator) commitBlock(blockID uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
 	if val.state == StateIdle || blockID != val.blockID {
 		val.blockID = blockID
 		val.updateHash(hash)
@@ -190,7 +190,7 @@ func (val *Validator) finalizeBlock() {
 	// Todo: add block to local blockchain. Slash the proposer if that fails.
 }
 
-func (val *Validator) commitProposeBlock(blockID uint32) {
+func (val *Validator) commitProposeBlock(blockID uint64) {
 	val.state = StateCommitPrepared
 	val.blockID = blockID
 	h := getPairedHash(val.blockID)
@@ -200,7 +200,7 @@ func (val *Validator) commitProposeBlock(blockID uint32) {
 	val.log.Print("CommitPropose@", val.blockID, "#", val.hash)
 }
 
-func (val *Validator) commitPrepareBlock(blockID uint32, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+func (val *Validator) commitPrepareBlock(blockID uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
 	val.state = StateCommitPrepared
 	val.blockID = blockID
 	val.updateHash(hash)

@@ -67,7 +67,6 @@ func TestPairBFT_n4_bf1_e50(t *testing.T) {
 }
 
 func TestPairBFT_cp_n4_bf1_e50(t *testing.T) {
-	return
 	numVals := 4
 	bf := 1
 	numEpochs := 10
@@ -76,7 +75,6 @@ func TestPairBFT_cp_n4_bf1_e50(t *testing.T) {
 }
 
 func TestPairBFT_n10_bf2_e100(t *testing.T) {
-	return
 	numVals := 10
 	bf := 2
 	numEpochs := 100
@@ -85,7 +83,6 @@ func TestPairBFT_n10_bf2_e100(t *testing.T) {
 }
 
 func TestPairBFT_cp_n10_bf2_e100(t *testing.T) {
-	return
 	numVals := 10
 	bf := 2
 	numEpochs := 100
@@ -99,4 +96,12 @@ func TestPairBFT_n40_bf5_e500(t *testing.T) {
 	numEpochs := 100
 	epoch := time.Millisecond * 500
 	SimulatePairBFT(numVals, bf, epoch, numEpochs, false)
+}
+
+func TestPairBFT_cp_n40_bf5_e500(t *testing.T) {
+	numVals := 40
+	bf := 5
+	numEpochs := 100
+	epoch := time.Millisecond * 500
+	SimulatePairBFT(numVals, bf, epoch, numEpochs, true)
 }
