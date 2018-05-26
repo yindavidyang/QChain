@@ -50,6 +50,7 @@ func (val *Validator) handlePrepare(msg *PrepareMsg) {
 	if msg.blockID > val.blockID+1 || (val.state == StateIdle && msg.blockID > 0) {
 		val.log.Panic("Not implemented: ", msg.blockID, " ", val.blockID)
 		// Todo: send sync request to the message sender
+		return
 	}
 
 	if val.checkHashMismatch(&msg.Msg) {
@@ -70,7 +71,7 @@ func (val *Validator) handlePrepare(msg *PrepareMsg) {
 		}
 	}
 	if msg.pPairer == nil {
-		msg.pPairer = val.bls.PreprocessHash(getNouncedHash(msg.hash, NouncePrepare))
+		msg.pPairer = val.bls.PreprocessHash(getNoncedHash(msg.hash, NoncePrepare))
 	}
 
 	if !msg.Verify(val.bls, val.valPubKeySet) {
@@ -192,7 +193,7 @@ func (val *Validator) handleCommitPrepare(msg *CommitPrepareMsg) {
 		}
 	}
 	if msg.pPairer == nil {
-		msg.pPairer = val.bls.PreprocessHash(getNouncedHash(msg.hash, NounceCommitPrepare))
+		msg.pPairer = val.bls.PreprocessHash(getNoncedHash(msg.hash, NonceCommitPrepare))
 	}
 
 	if !msg.Verify(val.bls, val.valPubKeySet) {

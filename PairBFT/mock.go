@@ -3,8 +3,6 @@ package PairBFT
 import (
 	"strconv"
 	"crypto/sha256"
-	"github.com/Nik-U/pbc"
-	"time"
 )
 
 const (
@@ -31,45 +29,22 @@ func getBlockHash(blockID uint32) []byte {
 	return h[:]
 }
 
-func getNouncedHash(hash []byte, nounce string) []byte {
-	dataToSign := make([]byte, LenHash+len(nounce))
+func getNoncedHash(hash []byte, nonce string) []byte {
+	dataToSign := make([]byte, LenHash+len(nonce))
 	copy(dataToSign, hash)
-	copy(dataToSign[LenHash:], nounce)
+	copy(dataToSign[LenHash:], nonce)
 	h := sha256.Sum256(dataToSign)
 	return h[:]
 }
 
 func getPairedHash(blockID uint32) []byte{
-	dataToSign := make([]byte, LenHash*2+len(NounceCommitPrepare))
+	dataToSign := make([]byte, LenHash*2+len(NonceCommitPrepare))
 	i := 0
 	copy(dataToSign, getBlockHash(blockID))
 	i += LenHash
 	copy(dataToSign[i:], getBlockHash(blockID - 1))
 	i += LenHash
-	copy(dataToSign[i:], NounceCommitPrepare)
+	copy(dataToSign[i:], NonceCommitPrepare)
 	h := sha256.Sum256(dataToSign)
 	return h[:]
-}
-
-func genValidators(numVals int, bf int, epochLen time.Duration) []Validator {
-	bls := &BLS{}
-	bls.Init()
-
-	validatorAddresses := genValidatorAddresses(numVals)
-
-	vals := make([]Validator, numVals)
-	for i := 0; i < numVals; i++ {
-		vals[i].Init(uint32(i), bls, bf, epochLen)
-	}
-
-	pubKeys := make([]*pbc.Element, numVals)
-	pubKeySigs := make([]*pbc.Element, numVals)
-	for i := 0; i < numVals; i++ {
-		pubKeys[i] = vals[i].PubKey
-		pubKeySigs[i] = vals[i].PubKeySig
-	}
-	for i := 0; i < numVals; i++ {
-		vals[i].SetValSet(validatorAddresses, pubKeys, pubKeySigs)
-	}
-	return vals
 }

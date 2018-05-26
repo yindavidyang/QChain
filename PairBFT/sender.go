@@ -16,16 +16,20 @@ func (val *Validator) chooseRcpt() uint32 {
 	return rcpt
 }
 
-func (val Validator) genMsgData(rcpt uint32) []byte {
+func (val *Validator) genMsgData(rcpt uint32) []byte {
+	val.stateMutex.Lock()
+	defer val.stateMutex.Unlock()
+
 	var (
 		data       []byte
 		dummyPMsg  = &PrepareMsg{}
 		dummyCMsg  = &CommitMsg{}
 		dummyCPMsg = &CommitPrepareMsg{}
 	)
-	val.stateMutex.Lock()
+
 	switch val.state {
 	case StatePrepared:
+		val.log.Debug("xPrepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 		if val.blockID == 0 {
 			data = dummyPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
 		} else {
@@ -33,9 +37,11 @@ func (val Validator) genMsgData(rcpt uint32) []byte {
 		}
 		val.log.Debug("Prepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 	case StateCommitted, StateFinal:
+		val.log.Debug("xCommit->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 		data = dummyCMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.prevAggSig)
 		val.log.Debug("Commit->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 	case StateCommitPrepared, StateFinalPrepared:
+		val.log.Debug("xCommitPrepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 		if val.blockID == 0 {
 			data = dummyCPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
 		} else {
@@ -43,23 +49,30 @@ func (val Validator) genMsgData(rcpt uint32) []byte {
 		}
 		val.log.Debug("CommitPrepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
 	}
-	val.stateMutex.Unlock()
 	return data
 }
 
+func (val *Validator) sendData(rcpt uint32, data []byte) {
+	conn, err := net.Dial("udp", val.valAddrSet[rcpt])
+	if err != nil {
+		val.log.Panic("Error connecting to server: ", err)
+	}
+	conn.Write(data)
+	conn.Close()
+}
+
 func (val *Validator) Send() {
-	if val.state == StateIdle {
+	val.stateMutex.Lock()
+	state := val.state
+	val.stateMutex.Unlock()
+
+	if state == StateIdle {
 		return
 	}
 
 	for i := 0; i < val.branchFactor; i++ {
 		rcpt := val.chooseRcpt()
 		data := val.genMsgData(rcpt)
-		conn, err := net.Dial("udp", val.valAddrSet[rcpt])
-		if err != nil {
-			val.log.Panic("Error connecting to server: ", err)
-		}
-		conn.Write(data)
-		conn.Close()
+		val.sendData(rcpt, data)
 	}
 }

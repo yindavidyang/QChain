@@ -27,7 +27,7 @@ func TestAggSigSerialization(t *testing.T) {
 			aggSig.counters[i] = rand.Uint32()
 		}
 		hash := getBlockHash(blockID)
-		hash = getNouncedHash(hash, NounceCommit)
+		hash = getNoncedHash(hash, NonceCommit)
 		aggSig.sig = bls.SignHash(hash, privKey)
 
 		pairer := bls.PreprocessHash(hash)

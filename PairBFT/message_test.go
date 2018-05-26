@@ -102,7 +102,7 @@ func TestMsgSerialization(t *testing.T) {
 
 		cSig := &AggSig{}
 		cSig.Init(bls, numVals)
-		hash = getNouncedHash(hash, NounceCommit)
+		hash = getNoncedHash(hash, NonceCommit)
 		for i := 0; i < numVals; i ++ {
 			cSig.counters[i] = rand.Uint32()
 			tempNum.SetInt32(int32(cSig.counters[i]))

@@ -24,7 +24,7 @@ type (
 		aggSig, prevAggSig           *AggSig
 		PubKeySig                    *pbc.Element
 		PubKey, privKey              *pbc.Element
-		stateMutex                   sync.Mutex
+		stateMutex                   *sync.Mutex
 		log                          *logrus.Logger
 		pPairer, cPairer, prevPairer *pbc.Pairer
 		valAddrSet                   []string
@@ -72,6 +72,8 @@ func (val *Validator) Start() {
 }
 
 func (val *Validator) Init(id uint32, bls *BLS, bf int, epochLen time.Duration) {
+	val.stateMutex = &sync.Mutex{}
+
 	val.debugTerminated = make(chan bool)
 
 	val.log = logrus.New()
@@ -104,7 +106,7 @@ func (val *Validator) Init(id uint32, bls *BLS, bf int, epochLen time.Duration) 
 	val.log.Print("Public key: ", val.PubKey)
 	val.log.Debug("Private key: ", val.privKey)
 
-	h := getNouncedHash(val.PubKey.Bytes(), NouncePubKey)
+	h := getNoncedHash(val.PubKey.Bytes(), NoncePubKey)
 	val.PubKeySig = val.bls.SignHash(h, val.privKey)
 }
 
@@ -114,14 +116,14 @@ func (val *Validator) InitAggSig() {
 	val.aggSig.Init(val.bls, numVals)
 	val.aggSig.counters[val.id] = 1
 
-	nounce := NouncePrepare
+	nounce := NoncePrepare
 	if val.useCommitPrepare {
-		nounce = NounceCommitPrepare
+		nounce = NonceCommitPrepare
 	}
 	if val.state == StateCommitted {
-		nounce = NounceCommit
+		nounce = NonceCommit
 	}
-	h := getNouncedHash(val.hash, nounce)
+	h := getNoncedHash(val.hash, nounce)
 	val.aggSig.sig = val.bls.SignHash(h, val.privKey)
 }
 
@@ -130,7 +132,7 @@ func (val *Validator) SetValSet(valAddrSet []string, valPubKeySet []*pbc.Element
 	val.valPubKeySet = valPubKeySet
 	numVals := len(val.valAddrSet)
 	for i := 0; i < numVals; i++ {
-		h := getNouncedHash(valPubKeySet[i].Bytes(), NouncePubKey)
+		h := getNoncedHash(valPubKeySet[i].Bytes(), NoncePubKey)
 		val.bls.VerifyHash(h, valPubKeySig[i], valPubKeySet[i])
 	}
 }
@@ -139,11 +141,11 @@ func (val *Validator) updateHash(hash []byte) {
 	val.hash = hash
 	if val.useCommitPrepare {
 		val.prevPairer = val.pPairer
-		val.pPairer = val.bls.PreprocessHash(getNouncedHash(hash, NounceCommitPrepare))
+		val.pPairer = val.bls.PreprocessHash(getNoncedHash(hash, NonceCommitPrepare))
 	} else {
-		val.pPairer = val.bls.PreprocessHash(getNouncedHash(hash, NouncePrepare))
+		val.pPairer = val.bls.PreprocessHash(getNoncedHash(hash, NoncePrepare))
 		val.prevPairer = val.cPairer
-		cHash := getNouncedHash(hash, NounceCommit)
+		cHash := getNoncedHash(hash, NonceCommit)
 		val.cPairer = val.bls.PreprocessHash(cHash)
 	}
 }
@@ -221,7 +223,13 @@ func (val *Validator) logMessageVerificationFailure(msg *Msg) {
 	val.log.Print("Message verification failed.")
 	val.log.Print("@", msg.blockID)
 	val.log.Print("#", msg.hash)
+	val.log.Print("P#", getNoncedHash(msg.hash, NoncePrepare))
+	val.log.Print("C#", getNoncedHash(msg.hash, NonceCommit))
 	val.log.Print("Self#", val.hash)
 	val.log.Print("PSig:", msg.PSig.counters, "(", msg.PSig.sig, ")")
+	val.log.Print("PSig sig pairing:", val.bls.PairSig(msg.PSig.sig))
+	val.log.Print("PSig agg pubkey:", msg.PSig.computeAggKey(val.bls, val.valPubKeySet))
 	val.log.Print("CSig:", msg.CSig.counters, "(", msg.CSig.sig, ")")
+	val.log.Print("CSig sig pairing:", val.bls.PairSig(msg.CSig.sig))
+	val.log.Print("CSig agg pubkey:", msg.CSig.computeAggKey(val.bls, val.valPubKeySet))
 }

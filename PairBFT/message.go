@@ -20,7 +20,7 @@ type (
 	- hash is the hash of the current block
 	- PSig is an AggSig of hash
 	- PSig must contain the proposer of the current block
-	- CSig is an Aggsig of (hash of the previous block | NounceCommit)
+	- CSig is an Aggsig of (hash of the previous block | NonceCommit)
 	- CSig much reach quorum
 	*/
 	PrepareMsg struct {
@@ -33,7 +33,7 @@ type (
 	- hash is the hash of the current block
 	- PSig is an AggSig of hash
 	- PSig must contain the proposer of the current block
-	- CSig is an Aggsig of (hash | NounceCommit)
+	- CSig is an Aggsig of (hash | NonceCommit)
 	- PSig much reach quorum
 	*/
 	CommitMsg struct {
@@ -111,14 +111,14 @@ func (msg *Msg) VerifyCSig(bls *BLS, pubKeys []*pbc.Element) bool {
 
 func (msg *Msg) Preprocess(bls *BLS, useCommitPrepare bool) {
 	if msg.pPairer == nil {
-		nounce := NouncePrepare
+		nounce := NoncePrepare
 		if useCommitPrepare {
-			nounce = NounceCommitPrepare
+			nounce = NonceCommitPrepare
 		}
-		msg.pPairer = bls.PreprocessHash(getNouncedHash(msg.hash, nounce))
+		msg.pPairer = bls.PreprocessHash(getNoncedHash(msg.hash, nounce))
 	}
 	if msg.cPairer == nil {
-		msg.cPairer = bls.PreprocessHash(getNouncedHash(msg.hash, NounceCommit))
+		msg.cPairer = bls.PreprocessHash(getNoncedHash(msg.hash, NonceCommit))
 	}
 }
 
