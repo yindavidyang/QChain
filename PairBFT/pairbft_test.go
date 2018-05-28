@@ -7,7 +7,7 @@ import (
 	"github.com/Nik-U/pbc"
 )
 
-func genValidators(numVals int, bf int, epochLen time.Duration) []Validator {
+func genValidators(numVals int, bf int, epochLen time.Duration, useCommitPrepare bool) []Validator {
 	bls := &BLS{}
 	bls.Init()
 
@@ -15,7 +15,7 @@ func genValidators(numVals int, bf int, epochLen time.Duration) []Validator {
 
 	vals := make([]Validator, numVals)
 	for i := 0; i < numVals; i++ {
-		vals[i].Init(uint32(i), bls, bf, epochLen)
+		vals[i].Init(i, bls, bf, epochLen, useCommitPrepare)
 	}
 
 	pubKeys := make([]*pbc.Element, numVals)
@@ -31,18 +31,14 @@ func genValidators(numVals int, bf int, epochLen time.Duration) []Validator {
 }
 
 func SimulatePairBFT(numVals int, bf int, epoch time.Duration, numEpochs int, useCommitPrepare bool) {
-	vals := genValidators(numVals, bf, epoch)
+	vals := genValidators(numVals, bf, epoch, useCommitPrepare)
 
 	proposerID := getProposerID(0, numVals)
 
 	if useCommitPrepare {
-		for i := 0; i < numVals; i++ {
-			vals[i].useCommitPrepare = true
-		}
 		vals[proposerID].commitProposeBlock(0)
 	} else {
 		vals[proposerID].proposeBlock(0)
-
 	}
 
 	var wg sync.WaitGroup

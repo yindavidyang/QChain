@@ -41,7 +41,7 @@ func TestCommitVerification(t *testing.T) {
 
 	cMsg := &CommitMsg{}
 	cMsg.hash = []byte{193, 169, 142, 252, 239, 27, 190, 158, 115, 140, 49, 120, 22, 169, 205, 117, 84, 1, 178, 201, 199, 191, 72, 247, 35, 143, 34, 48, 226, 118, 103, 136}
-	cMsg.blockID = 5
+	cMsg.blockHeight = 5
 	cMsg.PSig = &AggSig{}
 	cMsg.PSig.Init(bls, numVals)
 	cMsg.PSig.counters = []uint32{2, 1, 0, 0, 0, 6, 1, 1, 1, 2}
@@ -114,7 +114,7 @@ func TestMsgSerialization(t *testing.T) {
 		}
 		msg.CSig = cSig
 
-		b := msg.BytesFromData(msg.blockID, msg.hash, msg.CSig, msg.PSig)
+		b := msg.BytesFromData(msg.blockHeight, msg.hash, msg.CSig, msg.PSig)
 		msg.SetBytes(b)
 
 		msg.Preprocess(bls)

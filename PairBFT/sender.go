@@ -7,52 +7,42 @@ import (
 )
 
 // Randomly choose another validator
-func (val *Validator) chooseRcpt() uint32 {
+func (val *Validator) chooseRcpt() int {
 	numVals := len(val.valAddrSet)
-	rcpt := rand.Uint32() % uint32(numVals - 1)
+	rcpt := int(rand.Uint32()) % (numVals - 1)
 	if rcpt >= val.id {
 		rcpt ++
 	}
 	return rcpt
 }
 
-func (val *Validator) genMsgData(rcpt uint32) []byte {
-	var (
-		data       []byte
-		dummyPMsg  = &PrepareMsg{}
-		dummyCMsg  = &CommitMsg{}
-		dummyCPMsg = &CommitPrepareMsg{}
-	)
-
+func (val *Validator) genMsgData(rcpt int) []byte {
 	val.stateMutex.Lock()
 	defer val.stateMutex.Unlock()
 
+	var (
+		data []byte
+	)
+	dummyMsg := &Msg{}
+
 	switch val.state {
 	case StatePrepared:
-		if val.blockID == 0 {
-			data = dummyPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
-		} else {
-			data = dummyPMsg.BytesFromData(val.blockID, val.hash, val.prevAggSig, val.aggSig)
-		}
-		val.log.Debug("Prepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
+		data = dummyMsg.BytesFromData(val.blockHeight, val.hash, val.prevAggSig, val.aggSig)
+		val.log.Debug("Prepare->", strconv.Itoa(rcpt), "@", val.blockHeight, ":", val.aggSig.counters)
 	case StateCommitted, StateFinal:
-		data = dummyCMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.prevAggSig)
-		val.log.Debug("Commit->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
+		data = dummyMsg.BytesFromData(val.blockHeight, val.hash, val.aggSig, val.prevAggSig)
+		val.log.Debug("Commit->", strconv.Itoa(rcpt), "@", val.blockHeight, ":", val.aggSig.counters)
 	case StateCommitPrepared, StateFinalPrepared:
-		if val.blockID == 0 {
-			data = dummyCPMsg.BytesFromData(val.blockID, val.hash, val.aggSig, val.aggSig)
-		} else {
-			data = dummyCPMsg.BytesFromData(val.blockID, val.hash, val.prevAggSig, val.aggSig)
-		}
-		val.log.Debug("CommitPrepare->", strconv.Itoa(int(rcpt)), "@", val.blockID, ":", val.aggSig.counters)
+		data = dummyMsg.BytesFromData(val.blockHeight, val.hash, val.prevAggSig, val.aggSig)
+		val.log.Debug("CommitPrepare->", strconv.Itoa(rcpt), "@", val.blockHeight, ":", val.aggSig.counters)
 	}
 	return data
 }
 
-func (val *Validator) sendData(rcpt uint32, data []byte) {
+func (val *Validator) sendData(rcpt int, data []byte) {
 	conn, err := net.Dial("udp", val.valAddrSet[rcpt])
 	if err != nil {
-		val.log.Panic("Error connecting to server: ", err)
+		val.log.Panic("Error connecting to validator: ", err)
 	}
 	conn.Write(data)
 	conn.Close()

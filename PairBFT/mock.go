@@ -9,8 +9,8 @@ const (
 	BlockData    = "Start BLS UDP BFT pair method test data block *********"
 )
 
-func getProposerID(blockID uint64, numVals int) uint32 {
-	return uint32(blockID % uint64(numVals))
+func getProposerID(blockID uint64, numVals int) int {
+	return int(blockID % uint64(numVals))
 }
 
 func genValidatorAddresses(numVals int) []string {
@@ -23,9 +23,22 @@ func genValidatorAddresses(numVals int) []string {
 	return ret
 }
 
-func getBlockHash(blockID uint64) []byte {
-	dataToSign := BlockData + strconv.Itoa(int(blockID))
-	h := sha256.Sum256([]byte(dataToSign))
+// Block hash is a hash digest over the concatenation of:
+// - block data
+// - hash of previous block, except for the first block, where prevHash = nil
+func getBlockHash(prevHash []byte) []byte {
+	if prevHash == nil { // first block
+		h := sha256.Sum256([]byte(BlockData))
+		return h[:]
+	}
+	lenBlockData := len([]byte(BlockData))
+	l := lenBlockData + LenHash
+	b := make([]byte, l)
+	i := 0
+	copy(b[i:], []byte(BlockData))
+	i += lenBlockData
+	copy(b[i:], prevHash)
+	h := sha256.Sum256(b)
 	return h[:]
 }
 
@@ -33,18 +46,6 @@ func getNoncedHash(hash []byte, nonce string) []byte {
 	dataToSign := make([]byte, LenHash+len(nonce))
 	copy(dataToSign, hash)
 	copy(dataToSign[LenHash:], nonce)
-	h := sha256.Sum256(dataToSign)
-	return h[:]
-}
-
-func getPairedHash(blockID uint64) []byte{
-	dataToSign := make([]byte, LenHash*2+len(NonceCommitPrepare))
-	i := 0
-	copy(dataToSign, getBlockHash(blockID))
-	i += LenHash
-	copy(dataToSign[i:], getBlockHash(blockID - 1))
-	i += LenHash
-	copy(dataToSign[i:], NonceCommitPrepare)
 	h := sha256.Sum256(dataToSign)
 	return h[:]
 }
