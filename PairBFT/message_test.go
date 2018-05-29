@@ -114,7 +114,7 @@ func TestMsgSerialization(t *testing.T) {
 		}
 		msg.CSig = cSig
 
-		b := msg.BytesFromData(msg.blockHeight, msg.hash, msg.CSig, msg.PSig)
+		b := msg.MsgBytesFromData(msg.blockHeight, msg.hash, msg.CSig, msg.PSig)
 		msg.SetBytes(b)
 
 		msg.Preprocess(bls)

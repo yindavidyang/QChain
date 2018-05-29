@@ -25,7 +25,7 @@ func (msg *Msg) Init(bls *BLS, numVals int, msgType byte) {
 	msg.PSig.Init(bls, numVals)
 }
 
-func (msg *Msg) BytesFromData(blockHeight uint64, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
+func MsgBytesFromData(msgType byte, blockHeight uint64, hash []byte, cSig *AggSig, pSig *AggSig) []byte {
 	if cSig == nil {
 		cSig = pSig
 	}
@@ -36,7 +36,7 @@ func (msg *Msg) BytesFromData(blockHeight uint64, hash []byte, cSig *AggSig, pSi
 
 	i := 0
 	b := make([]byte, LenMsgType+LenBlockHeight+LenHash+cLen+pLen)
-	b[i] = msg.msgType
+	b[i] = msgType
 	i += LenMsgType
 	binary.LittleEndian.PutUint64(b[i:], blockHeight)
 	i += LenBlockHeight

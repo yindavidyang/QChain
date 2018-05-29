@@ -23,17 +23,16 @@ func (val *Validator) genMsgData(rcpt int) []byte {
 	var (
 		data []byte
 	)
-	dummyMsg := &Msg{}
 
 	switch val.state {
 	case StatePrepared:
-		data = dummyMsg.BytesFromData(val.blockHeight, val.hash, val.prevAggSig, val.aggSig)
+		data = MsgBytesFromData(MsgTypePrepare, val.blockHeight, val.hash, val.prevAggSig, val.aggSig)
 		val.log.Debug("Prepare->", strconv.Itoa(rcpt), "@", val.blockHeight, ":", val.aggSig.counters)
 	case StateCommitted, StateFinal:
-		data = dummyMsg.BytesFromData(val.blockHeight, val.hash, val.aggSig, val.prevAggSig)
+		data = MsgBytesFromData(MsgTypeCommit, val.blockHeight, val.hash, val.aggSig, val.prevAggSig)
 		val.log.Debug("Commit->", strconv.Itoa(rcpt), "@", val.blockHeight, ":", val.aggSig.counters)
 	case StateCommitPrepared, StateFinalPrepared:
-		data = dummyMsg.BytesFromData(val.blockHeight, val.hash, val.prevAggSig, val.aggSig)
+		data = MsgBytesFromData(MsgTypeCommitPrepare, val.blockHeight, val.hash, val.prevAggSig, val.aggSig)
 		val.log.Debug("CommitPrepare->", strconv.Itoa(rcpt), "@", val.blockHeight, ":", val.aggSig.counters)
 	}
 	return data
