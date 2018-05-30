@@ -9,6 +9,7 @@ import (
 // Randomly choose another validator
 func (val *Validator) chooseRcpt() int {
 	numVals := len(val.valAddrSet)
+	// todo: replace math.rand with a secure random function
 	rcpt := int(rand.Uint32()) % (numVals - 1)
 	if rcpt >= val.id {
 		rcpt ++

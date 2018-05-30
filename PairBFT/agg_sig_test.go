@@ -20,13 +20,13 @@ func TestAggSigSerialization(t *testing.T) {
 
 		privKey, pubKey := bls.GenKey()
 
-		blockID := uint32(rep)
+		blockHeight := uint32(rep)
 		aggSig := &AggSig{}
 		aggSig.Init(bls, numVals)
 		for i := 0; i < numVals; i ++ {
 			aggSig.counters[i] = rand.Uint32()
 		}
-		hash := getBlockHash(blockID)
+		hash := getBlockHash(blockHeight)
 		hash = getNoncedHash(hash, NonceCommit)
 		aggSig.sig = bls.SignHash(hash, privKey)
 

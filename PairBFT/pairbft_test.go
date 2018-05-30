@@ -5,13 +5,24 @@ import (
 	"testing"
 	"sync"
 	"github.com/Nik-U/pbc"
+	"strconv"
 )
+
+func genLocalValidatorAddresses(numVals int) []string {
+	ret := make([]string, numVals)
+	address := "127.0.0.1"
+	startPort := 2000
+	for i := 0; i < numVals; i++ {
+		ret[i] = address + ":" + strconv.Itoa(int(startPort+i))
+	}
+	return ret
+}
 
 func genValidators(numVals int, bf int, epochLen time.Duration, useCommitPrepare bool) []Validator {
 	bls := &BLS{}
 	bls.Init()
 
-	validatorAddresses := genValidatorAddresses(numVals)
+	validatorAddresses := genLocalValidatorAddresses(numVals)
 
 	vals := make([]Validator, numVals)
 	for i := 0; i < numVals; i++ {
@@ -33,12 +44,13 @@ func genValidators(numVals int, bf int, epochLen time.Duration, useCommitPrepare
 func SimulatePairBFT(numVals int, bf int, epoch time.Duration, numEpochs int, useCommitPrepare bool) {
 	vals := genValidators(numVals, bf, epoch, useCommitPrepare)
 
-	proposerID := getProposerID(0, numVals)
+	proposerID := getProposerID(1, numVals)
 
+	// the first block must be Block 1, not Block 0
 	if useCommitPrepare {
-		vals[proposerID].commitProposeBlock(0)
+		vals[proposerID].commitProposeBlock(1)
 	} else {
-		vals[proposerID].proposeBlock(0)
+		vals[proposerID].proposeBlock(1)
 	}
 
 	var wg sync.WaitGroup

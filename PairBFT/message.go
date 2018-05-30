@@ -92,7 +92,7 @@ func (msg *Msg) Verify(bls *BLS, pubKeys []*pbc.Element) bool {
 		return false
 	}
 
-	if msg.msgType == MsgTypeCommit || msg.blockHeight > 0 {
+	if msg.msgType == MsgTypeCommit || msg.blockHeight > 1 {
 		if !msg.VerifyCSig(bls, pubKeys) {
 			return false
 		}
@@ -100,7 +100,7 @@ func (msg *Msg) Verify(bls *BLS, pubKeys []*pbc.Element) bool {
 
 	if msg.msgType == MsgTypeCommit {
 		return msg.PSig.ReachQuorum()
-	} else if msg.blockHeight > 0 {
+	} else if msg.blockHeight > 1 {
 		return msg.CSig.ReachQuorum()
 	}
 

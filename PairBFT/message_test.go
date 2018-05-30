@@ -84,10 +84,10 @@ func TestMsgSerialization(t *testing.T) {
 		msg.Init(bls, numVals)
 		tempNum := bls.pairing.NewZr()
 
-		blockID := uint32(rep)
+		blockHeight := uint32(rep)
 		pSig := &AggSig{}
 		pSig.Init(bls, numVals)
-		hash := getBlockHash(blockID)
+		hash := getBlockHash(blockHeight)
 
 		for i := 0; i < numVals; i ++ {
 			pSig.counters[i] = rand.Uint32()
@@ -114,7 +114,7 @@ func TestMsgSerialization(t *testing.T) {
 		}
 		msg.CSig = cSig
 
-		b := msg.MsgBytesFromData(msg.blockHeight, msg.hash, msg.CSig, msg.PSig)
+		b := MsgBytesFromData(msg.blockHeight, msg.hash, msg.CSig, msg.PSig)
 		msg.SetBytes(b)
 
 		msg.Preprocess(bls)

@@ -41,7 +41,7 @@ func (val *Validator) handlePrepare(msg *Msg) {
 		return
 	}
 
-	if msg.blockHeight > val.blockHeight+1 || (val.state == StateIdle && msg.blockHeight > 0) {
+	if msg.blockHeight > val.blockHeight+1 {
 		val.log.Panic("Not implemented: ", msg.blockHeight, " ", val.blockHeight)
 		// Todo: send sync request to the message sender
 		return
@@ -74,7 +74,7 @@ func (val *Validator) handlePrepare(msg *Msg) {
 		return
 	}
 
-	if msg.blockHeight > val.blockHeight && val.state != StateFinal {
+	if msg.blockHeight > 1 && msg.blockHeight > val.blockHeight && val.state != StateFinal {
 		val.aggSig = msg.CSig
 		val.finalizeBlock()
 	}
@@ -107,12 +107,12 @@ func (val *Validator) handleCommit(msg *Msg) {
 		return
 	}
 
-	if msg.blockHeight > val.blockHeight+1 || (val.state == StateIdle && msg.blockHeight > 0) {
+	if msg.blockHeight > val.blockHeight+1 {
 		val.log.Panic("Not implemented.")
 		// Todo: send sync request to the message sender
 	}
 
-	if msg.blockHeight > val.blockHeight && val.state != StateFinal {
+	if msg.blockHeight > 1 && msg.blockHeight > val.blockHeight && val.state != StateFinal {
 		val.log.Panic("Not implemented.")
 		// Todo: send sync request to the message sender, to retrieve the aggregate signature
 	}
@@ -167,7 +167,8 @@ func (val *Validator) handleCommitPrepare(msg *Msg) {
 		return
 	}
 
-	if msg.blockHeight > val.blockHeight+1 || (val.state == StateIdle && msg.blockHeight > 0) {
+	if msg.blockHeight > val.blockHeight+1 {
+		val.peerHeight = msg.blockHeight
 		val.log.Panic("Not implemented.")
 		// Todo: send sync request to the message sender
 	}

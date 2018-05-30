@@ -11,6 +11,11 @@ import (
 	"os"
 )
 
+// todo: change this to real block data
+const (
+	MockBlockDataString = "Start BLS UDP BFT pair method test data block *********"
+)
+
 type (
 	Validator struct {
 		bls                          *BLS
@@ -20,10 +25,12 @@ type (
 		state                        int
 		branchFactor                 int
 		epochLen                     time.Duration
-		hash                         []byte
+		hash, blockData              []byte
 		aggSig, prevAggSig           *AggSig
 		stateMutex                   sync.Mutex
 		pPairer, cPairer, prevPairer *pbc.Pairer
+		peerHeight                   uint64
+		prevHash, prevBlockData      []byte // for CommitPrepare
 
 		PubKey, privKey *pbc.Element
 		PubKeySig       *pbc.Element
@@ -71,6 +78,12 @@ func (val *Validator) Init(id int, bls *BLS, bf int, epochLen time.Duration, use
 	val.PubKeySig = val.bls.SignHash(h, val.privKey)
 
 	val.initLog()
+
+	// todo: change this to real block data
+	val.blockData = []byte(MockBlockDataString)
+	if useCommitPrepare {
+		val.prevBlockData = []byte(MockBlockDataString)
+	}
 
 	val.log.Print("BLS params: ", bls.params)
 	val.log.Print("BLS g: ", bls.g)
@@ -153,19 +166,19 @@ func (val *Validator) updateHash(hash []byte) {
 	}
 }
 
-func (val *Validator) proposeBlock(blockID uint64) {
+func (val *Validator) proposeBlock(blockHeight uint64) {
 	val.state = StatePrepared
-	val.blockHeight = blockID
-	h := getBlockHash(val.hash)
+	val.blockHeight = blockHeight
+	h := getBlockHash(val.blockData, val.hash)
 	val.updateHash(h)
 	val.prevAggSig = val.aggSig
 	val.InitAggSig()
 	val.log.Print("Propose@", val.blockHeight, "#", val.hash)
 }
 
-func (val *Validator) prepareBlock(blockID uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+func (val *Validator) prepareBlock(blockHeight uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
 	val.state = StatePrepared
-	val.blockHeight = blockID
+	val.blockHeight = blockHeight
 	val.updateHash(hash)
 	val.prevAggSig = prevAggSig
 	val.InitAggSig()
@@ -173,9 +186,9 @@ func (val *Validator) prepareBlock(blockID uint64, hash []byte, aggSig *AggSig, 
 	val.log.Print("Prepared@", val.blockHeight, ":", val.aggSig.counters)
 }
 
-func (val *Validator) commitBlock(blockID uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
-	if val.state == StateIdle || blockID != val.blockHeight {
-		val.blockHeight = blockID
+func (val *Validator) commitBlock(blockHeight uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+	if val.state == StateIdle || blockHeight != val.blockHeight {
+		val.blockHeight = blockHeight
 		val.updateHash(hash)
 	}
 	val.state = StateCommitted
@@ -193,19 +206,19 @@ func (val *Validator) finalizeBlock() {
 	// Todo: add block to local blockchain. Slash the proposer if that fails.
 }
 
-func (val *Validator) commitProposeBlock(blockID uint64) {
+func (val *Validator) commitProposeBlock(blockHeight uint64) {
 	val.state = StateCommitPrepared
-	val.blockHeight = blockID
-	h := getBlockHash(val.hash)
+	val.blockHeight = blockHeight
+	h := getBlockHash(val.blockData, val.hash)
 	val.updateHash(h)
 	val.prevAggSig = val.aggSig
 	val.InitAggSig()
 	val.log.Print("CommitPropose@", val.blockHeight, "#", val.hash)
 }
 
-func (val *Validator) commitPrepareBlock(blockID uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
+func (val *Validator) commitPrepareBlock(blockHeight uint64, hash []byte, aggSig *AggSig, prevAggSig *AggSig) {
 	val.state = StateCommitPrepared
-	val.blockHeight = blockID
+	val.blockHeight = blockHeight
 	val.updateHash(hash)
 	val.prevAggSig = prevAggSig
 	val.InitAggSig()
@@ -215,7 +228,7 @@ func (val *Validator) commitPrepareBlock(blockID uint64, hash []byte, aggSig *Ag
 
 func (val *Validator) finalizePrevBlock() {
 	val.state = StateFinalPrepared
-	if val.blockHeight == 0 {
+	if val.blockHeight == 1 {
 		return
 	}
 	val.log.Print("Finalized@", val.blockHeight-1, ":", val.aggSig.counters)
@@ -235,4 +248,9 @@ func (val *Validator) logMessageVerificationFailure(msg *Msg) {
 	val.log.Print("CSig:", msg.CSig.counters, "(", msg.CSig.sig, ")")
 	val.log.Print("CSig sig pairing:", val.bls.PairSig(msg.CSig.sig))
 	val.log.Print("CSig agg pubkey:", msg.CSig.computeAggKey(val.bls, val.valPubKeySet))
+}
+
+func getProposerID(blockHeight uint64, numVals int) int {
+	// todo: more complex proposer determination algorithm
+	return int(blockHeight % uint64(numVals))
 }
